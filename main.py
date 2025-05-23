@@ -3,17 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
-from backend import spt
-from backend.validation import validate_jobs_data
+import spt  # ⬅️ Corrigé
+from validation import validate_jobs_data  # ⬅️ Corrigé
 import matplotlib.pyplot as plt
 import io
 
 app = FastAPI()
 
-# ✅ CORS élargi temporairement pour Render
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # en prod, remplace par l'URL Vercel
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,3 +78,4 @@ def run_spt_gantt(request: SPTRequest):
     plt.close(fig)
     buf.seek(0)
     return StreamingResponse(buf, media_type="image/png")
+
