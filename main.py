@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List
 import spt
 import edd
+import johnson
 from validation import validate_jobs_data
 import matplotlib.pyplot as plt
 import io
@@ -21,6 +22,10 @@ app.add_middleware(
 
 class SPTRequest(BaseModel):
     jobs_data: List[List[List[int]]]
+    due_dates: List[int]
+
+class JohnsonRequest(BaseModel):
+    jobs_data: List[List[int]]
     due_dates: List[int]
 
 @app.post("/spt")
@@ -44,7 +49,7 @@ def run_spt(request: SPTRequest):
         "makespan": result["makespan"],
         "flowtime": result["flowtime"],
         "retard_cumule": result["retard_cumule"],
-        "completion_times": {f"Job {j}": t for j, t in result["completion_times"].items()},
+        "completion_times": result["completion_times"],
         "planification": planification
     }
 
@@ -101,7 +106,7 @@ def run_edd(request: SPTRequest):
         "makespan": result["makespan"],
         "flowtime": result["flowtime"],
         "retard_cumule": result["retard_cumule"],
-        "completion_times": {f"Job {j}": t for j, t in result["completion_times"].items()},
+        "completion_times": result["completion_times"],
         "planification": planification
     }
 
@@ -136,4 +141,53 @@ def run_edd_gantt(request: SPTRequest):
     plt.close(fig)
     buf.seek(0)
     return StreamingResponse(buf, media_type="image/png")
+
+@app.post("/johnson")
+def run_johnson(request: JohnsonRequest):
+    jobs_data = request.jobs_data
+    due_dates = request.due_dates
+
+    result = johnson.schedule(jobs_data, due_dates)
+
+    planification = {
+        f"Machine {machine}": tasks
+        for machine, tasks in result["machines"].items()
+    }
+
+    return {
+        "sequence": result["sequence"],
+        "makespan": result["makespan"],
+        "flowtime": result["flowtime"],
+        "retard_cumule": result["retard_cumule"],
+        "completion_times": result["completion_times"],
+        "planification": planification
+    }
+
+@app.post("/johnson/gantt")
+def run_johnson_gantt(request: JohnsonRequest):
+    jobs_data = request.jobs_data
+    due_dates = request.due_dates
+
+    result = johnson.schedule(jobs_data, due_dates)
+
+    fig, ax = plt.subplots(figsize=(10, 3))
+    colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1"]
+
+    for m, tasks in result["machines"].items():
+        for t in tasks:
+            ax.barh(f"Machine {m+1}", t["duration"], left=t["start"], color=colors[t["job"] % len(colors)])
+            ax.text(t["start"] + t["duration"] / 2, f"Machine {m+1}", f"J{t['job']+1}",
+                    va="center", ha="center", color="white", fontsize=8)
+
+    ax.set_xlabel("Temps")
+    ax.invert_yaxis()
+    ax.set_title("Diagramme de Gantt - Johnson")
+
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
 
