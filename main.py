@@ -3,8 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
-import spt  # ⬅️ Corrigé
-from validation import validate_jobs_data  # ⬅️ Corrigé
+import spt
+import edd
+from validation import validate_jobs_data
 import matplotlib.pyplot as plt
 import io
 
@@ -71,6 +72,63 @@ def run_spt_gantt(request: SPTRequest):
     ax.set_xlabel("Temps")
     ax.invert_yaxis()
     ax.set_title("Diagramme de Gantt - Flowshop SPT")
+
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
+@app.post("/edd")
+def run_edd(request: SPTRequest):
+    jobs_data = request.jobs_data
+    due_dates = request.due_dates
+
+    try:
+        validate_jobs_data(jobs_data, due_dates)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    result = edd.schedule(jobs_data, due_dates)
+
+    planification = {
+        f"Machine {machine}": tasks
+        for machine, tasks in result["machines"].items()
+    }
+
+    return {
+        "makespan": result["makespan"],
+        "flowtime": result["flowtime"],
+        "retard_cumule": result["retard_cumule"],
+        "completion_times": {f"Job {j}": t for j, t in result["completion_times"].items()},
+        "planification": planification
+    }
+
+@app.post("/edd/gantt")
+def run_edd_gantt(request: SPTRequest):
+    jobs_data = request.jobs_data
+    due_dates = request.due_dates
+
+    try:
+        validate_jobs_data(jobs_data, due_dates)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    result = edd.schedule(jobs_data, due_dates)
+
+    fig, ax = plt.subplots(figsize=(10, 3))
+    colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1"]
+
+    for m, tasks in result["machines"].items():
+        for t in tasks:
+            ax.barh(f"Machine {m}", t["duration"], left=t["start"], color=colors[t["job"] % len(colors)])
+            ax.text(t["start"] + t["duration"] / 2, f"Machine {m}", f"J{t['job']}",
+                    va="center", ha="center", color="white", fontsize=8)
+
+    ax.set_xlabel("Temps")
+    ax.invert_yaxis()
+    ax.set_title("Diagramme de Gantt - Flowshop EDD")
 
     buf = io.BytesIO()
     plt.tight_layout()
