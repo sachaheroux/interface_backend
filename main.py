@@ -245,22 +245,29 @@ def run_johnson_modifie_gantt(request: JohnsonRequest):
 
 @app.post("/smith")
 def run_smith(request: SmithRequest):
-    jobs = request.jobs
-    result = smith.smith_algorithm(jobs)
-    return result
+    try:
+        jobs = request.jobs
+        result = smith.smith_algorithm(jobs)
+        return result
+    except Exception as e:
+        import traceback
+        print("Erreur dans /smith :", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/smith/gantt")
 def run_smith_gantt(request: SmithRequest):
-    jobs = request.jobs
-    result = smith.smith_algorithm(jobs)
-    fig = smith.generate_gantt(result["sequence"], jobs)
+    try:
+        jobs = request.jobs
+        result = smith.smith_algorithm(jobs)
+        fig = smith.generate_gantt(result["sequence"], jobs)
 
-    buf = io.BytesIO()
-    plt.tight_layout()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="image/png")
-
-
-
+        buf = io.BytesIO()
+        plt.tight_layout()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        import traceback
+        print("Erreur dans /smith/gantt :", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
