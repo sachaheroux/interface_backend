@@ -7,6 +7,7 @@ import spt
 import edd
 import johnson
 import johnson_modifie
+import smith
 from validation import validate_jobs_data
 import matplotlib.pyplot as plt
 import io
@@ -28,6 +29,9 @@ class SPTRequest(BaseModel):
 class JohnsonRequest(BaseModel):
     jobs_data: List[List[int]]
     due_dates: List[int]
+
+class SmithRequest(BaseModel):
+    jobs: List[List[float]]
 
 @app.post("/spt")
 def run_spt(request: SPTRequest):
@@ -235,6 +239,25 @@ def run_johnson_modifie_gantt(request: JohnsonRequest):
     buf = io.BytesIO()
     plt.tight_layout()
     plt.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
+@app.post("/smith")
+def run_smith(request: SmithRequest):
+    jobs = request.jobs
+    result = smith.smith_algorithm(jobs)
+    return result
+
+@app.post("/smith/gantt")
+def run_smith_gantt(request: SmithRequest):
+    jobs = request.jobs
+    result = smith.smith_algorithm(jobs)
+    fig = smith.generate_gantt(result["sequence"], jobs)
+
+    buf = io.BytesIO()
+    plt.tight_layout()
+    fig.savefig(buf, format="png")
     plt.close(fig)
     buf.seek(0)
     return StreamingResponse(buf, media_type="image/png")
