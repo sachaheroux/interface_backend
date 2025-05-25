@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.patches as mpatches
 
 def smith_algorithm(jobs):
+    if not jobs or not all(len(job) == 2 for job in jobs):
+        raise ValueError("Chaque job doit être une liste de deux éléments [durée, due_date].")
+
     # Tri des jobs par date d'échéance croissante
     sorted_jobs = sorted(enumerate(jobs, start=1), key=lambda x: x[1][1])
 
