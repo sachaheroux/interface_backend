@@ -22,10 +22,16 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
                 raise ValueError(f"Tâche {task_index} du job {job_index} doit être une liste [machine, durée].")
 
             machine, duration = task
-            if not isinstance(machine, int):
-                raise ValueError(f"La machine dans la tâche {task_index} du job {job_index} doit être un entier.")
+
+            # ⚠️ Conversion explicite de machine en entier
+            try:
+                machine = int(machine)
+            except Exception:
+                raise ValueError(f"La machine dans la tâche {task_index} du job {job_index} doit être convertible en entier (ex: 0, 1.0).")
+
             if not isinstance(duration, (int, float)):
                 raise ValueError(f"La durée dans la tâche {task_index} du job {job_index} doit être un nombre.")
+
             if machine < 0 or duration <= 0:
                 raise ValueError(f"Tâche {task_index} du job {job_index} contient des valeurs négatives ou nulles.")
 
@@ -34,7 +40,7 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
     max_machine_index = max(machine_ids)
     if max_machine_index >= nb_taches_reference:
         raise ValueError(
-            f"Un indice de machine ({max_machine_index}) est supérieur au nombre de tâches ({nb_taches_reference})."
+            f"Un indice de machine ({max_machine_index}) est supérieur ou égal au nombre de tâches ({nb_taches_reference})."
         )
 
 
