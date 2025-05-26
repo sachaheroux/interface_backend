@@ -24,10 +24,7 @@ def smith_algorithm(jobs):
             sorted_jobs.remove(max_execution_time_job)
             total_execution_time -= max_execution_time_job[1][0]
         else:
-            break
-
-    if not sequence:
-        raise ValueError("Aucune séquence valide générée. Vérifiez les dates dues des jobs.")
+            raise ValueError("Aucun job admissible trouvé. Tous les jobs ont une date due trop courte pour être planifiés selon l'algorithme de Smith.")
 
     # Calcul du flowtime
     flowtime = sum((len(sequence) - i) * jobs[job-1][0] for i, job in enumerate(sequence)) / len(sequence)
