@@ -2,9 +2,9 @@ import collections
 from ortools.sat.python import cp_model
 
 def schedule(jobs_data, due_dates):
-    # 🔧 Conversion float -> int (OR-Tools ne supporte pas les floats)
+    # ✅ Convertir en int pour OR-Tools (qui ne supporte pas les floats)
     jobs_data = [
-        [(machine, int(round(duration))) for machine, duration in job]
+        [(int(machine), int(round(duration))) for machine, duration in job]
         for job in jobs_data
     ]
     due_dates = [int(round(d)) for d in due_dates]
@@ -15,15 +15,12 @@ def schedule(jobs_data, due_dates):
 
     model = cp_model.CpModel()
     task_type = collections.namedtuple('task_type', 'start end interval')
-    assigned_task_type = collections.namedtuple('assigned_task_type', 'start job index duration')
 
     all_tasks = {}
     machine_to_intervals = collections.defaultdict(list)
 
     for job_id, job in enumerate(jobs_data):
-        for task_id, task in enumerate(job):
-            machine = task[0]
-            duration = task[1]
+        for task_id, (machine, duration) in enumerate(job):
             suffix = f'_{job_id}_{task_id}'
             start_var = model.NewIntVar(0, horizon, f'start{suffix}')
             end_var = model.NewIntVar(0, horizon, f'end{suffix}')
@@ -53,10 +50,8 @@ def schedule(jobs_data, due_dates):
     total_delay = 0
 
     for job_id, job in enumerate(jobs_data):
-        for task_id, task in enumerate(job):
-            machine = task[0]
+        for task_id, (machine, duration) in enumerate(job):
             start_time = solver.Value(all_tasks[job_id, task_id].start)
-            duration = task[1]
             assigned_jobs[machine].append({
                 "job": job_id,
                 "task": task_id,
