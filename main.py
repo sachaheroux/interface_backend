@@ -24,12 +24,12 @@ app.add_middleware(
 )
 
 class SPTRequest(BaseModel):
-    jobs_data: List[List[List[int]]]
-    due_dates: List[int]
+    jobs_data: List[List[List[float]]]
+    due_dates: List[float]
 
 class JohnsonRequest(BaseModel):
-    jobs_data: List[List[int]]
-    due_dates: List[int]
+    jobs_data: List[List[float]]
+    due_dates: List[float]
 
 class SmithRequest(BaseModel):
     jobs: List[List[float]]
@@ -298,3 +298,4 @@ def run_contraintes_gantt(request: SPTRequest):
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
