@@ -24,20 +24,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ----------- Modèles -----------
+
 class SPTRequest(BaseModel):
     jobs_data: List[List[List[float]]]
     due_dates: List[float]
+    unite: str = "heures"
 
 class JohnsonRequest(BaseModel):
     jobs_data: List[List[float]]
     due_dates: List[float]
+    unite: str = "heures"
 
 class SmithRequest(BaseModel):
     jobs: List[List[float]]
+    unite: str = "heures"
 
-# ----------- Fonctions Générales pour Gantt -----------
+# ----------- Gantt -----------
 
-def create_gantt_figure(result, title: str):
+def create_gantt_figure(result, title: str, unite: str = "heures"):
     fig, ax = plt.subplots(figsize=(10, 3))
     colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
 
@@ -48,7 +53,7 @@ def create_gantt_figure(result, title: str):
             ax.text(t["start"] + t["duration"] / 2, label, f"J{t['job']}",
                     va="center", ha="center", color="white", fontsize=8)
 
-    ax.set_xlabel("Temps")
+    ax.set_xlabel(f"Temps ({unite})")
     ax.invert_yaxis()
     ax.set_title(title)
     plt.tight_layout()
@@ -76,7 +81,7 @@ def run_spt_gantt(request: SPTRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop SPT")
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop SPT", unite=request.unite)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -107,7 +112,7 @@ def run_edd_gantt(request: SPTRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = edd.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop EDD")
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop EDD", unite=request.unite)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -137,7 +142,7 @@ def run_johnson(request: JohnsonRequest):
 def run_johnson_gantt(request: JohnsonRequest):
     try:
         result = johnson.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson")
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson", unite=request.unite)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -167,7 +172,7 @@ def run_johnson_modifie(request: JohnsonRequest):
 def run_johnson_modifie_gantt(request: JohnsonRequest):
     try:
         result = johnson_modifie.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson modifié")
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson modifié", unite=request.unite)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -190,7 +195,7 @@ def run_smith(request: SmithRequest):
 def run_smith_gantt(request: SmithRequest):
     try:
         result = smith.smith_algorithm(request.jobs)
-        fig = smith.generate_gantt(result["sequence"], request.jobs)
+        fig = smith.generate_gantt(result["sequence"], request.jobs, unite=request.unite)
         buf = io.BytesIO()
         plt.tight_layout()
         fig.savefig(buf, format="png")
@@ -222,7 +227,7 @@ def run_contraintes_gantt(request: SPTRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = contraintes.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)")
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)", unite=request.unite)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -230,6 +235,7 @@ def run_contraintes_gantt(request: SPTRequest):
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 
 
