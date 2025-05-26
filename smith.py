@@ -29,7 +29,7 @@ def smith_algorithm(jobs):
     # Calcul du flowtime
     flowtime = sum((len(sequence) - i) * jobs[job-1][0] for i, job in enumerate(sequence)) / len(sequence)
 
-    # Calcul du nombre de jobs
+    # Calcul du nombre moyen de jobs (N)
     numerator = sum((len(sequence) - i) * jobs[job-1][0] for i, job in enumerate(sequence))
     denominator = sum(job[0] for job in jobs)
     N = numerator / denominator if denominator else 0
@@ -48,7 +48,7 @@ def smith_algorithm(jobs):
         "cumulative_delay": cumulative_delay
     }
 
-def generate_gantt(sequence, jobs):
+def generate_gantt(sequence, jobs, unite="heures"):
     fig, ax = plt.subplots(figsize=(8, 2))
 
     y_ticks = [1]
@@ -59,11 +59,12 @@ def generate_gantt(sequence, jobs):
     for i, job in enumerate(sequence):
         job_execution_time = jobs[job-1][0]
         ax.barh(y_ticks[0], job_execution_time, left=cumulative_time, height=0.2, color=colors(i), edgecolor='black')
-        ax.text(cumulative_time + job_execution_time/2, y_ticks[0], str(job_execution_time), ha='center', va='center', color='white', fontsize=8)
+        ax.text(cumulative_time + job_execution_time / 2, y_ticks[0], str(job_execution_time),
+                ha='center', va='center', color='white', fontsize=8)
         cumulative_time += job_execution_time
 
     ax.set_xlim(0, cumulative_time)
-    ax.set_xlabel("Temps de fabrication")
+    ax.set_xlabel(f"Temps de fabrication ({unite})")
     ax.set_yticks(y_ticks)
     ax.set_yticklabels(y_labels)
     ax.spines['left'].set_visible(False)
