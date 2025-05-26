@@ -1,8 +1,14 @@
 import collections
 from ortools.sat.python import cp_model
 
-
 def schedule(jobs_data, due_dates):
+    # 🔧 Conversion float -> int (OR-Tools ne supporte pas les floats)
+    jobs_data = [
+        [(machine, int(round(duration))) for machine, duration in job]
+        for job in jobs_data
+    ]
+    due_dates = [int(round(d)) for d in due_dates]
+
     machines_count = 1 + max(task[0] for job in jobs_data for task in job)
     all_machines = range(machines_count)
     horizon = sum(task[1] for job in jobs_data for task in job)
