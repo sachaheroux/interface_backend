@@ -30,6 +30,8 @@ class SPTRequest(BaseModel):
     jobs_data: List[List[List[float]]]
     due_dates: List[float]
     unite: str = "heures"
+    job_names: List[str]
+    machine_names: List[str]
 
 class JohnsonRequest(BaseModel):
     jobs_data: List[List[float]]
@@ -42,15 +44,16 @@ class SmithRequest(BaseModel):
 
 # ----------- Gantt -----------
 
-def create_gantt_figure(result, title: str, unite: str = "heures"):
+def create_gantt_figure(result, title: str, unite="heures", job_names=None, machine_names=None):
     fig, ax = plt.subplots(figsize=(10, 3))
     colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
 
-    for m, tasks in result["machines"].items():
-        label = f"Machine {int(m)}"
+    for m_idx, (m, tasks) in enumerate(result["machines"].items()):
+        label = machine_names[int(m)] if machine_names else f"Machine {int(m)}"
         for t in tasks:
+            job_label = job_names[t["job"]] if job_names else f"J{t['job']}"
             ax.barh(label, t["duration"], left=t["start"], color=colors[t["job"] % len(colors)])
-            ax.text(t["start"] + t["duration"] / 2, label, f"J{t['job']}",
+            ax.text(t["start"] + t["duration"] / 2, label, job_label,
                     va="center", ha="center", color="white", fontsize=8)
 
     ax.set_xlabel(f"Temps ({unite})")
@@ -71,17 +74,21 @@ def run_spt(request: SPTRequest):
             "flowtime": result["flowtime"],
             "retard_cumule": result["retard_cumule"],
             "completion_times": result["completion_times"],
-            "planification": {f"Machine {int(m)}": tasks for m, tasks in result["machines"].items()}
+            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()}
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.post("/spt/gantt")
 def run_spt_gantt(request: SPTRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop SPT", unite=request.unite)
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop SPT",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
