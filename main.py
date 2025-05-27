@@ -26,7 +26,7 @@ app.add_middleware(
 
 # ----------- Modèles -----------
 
-class SPTRequest(BaseModel):
+class ExtendedRequest(BaseModel):
     jobs_data: List[List[List[float]]]
     due_dates: List[float]
     unite: str = "heures"
@@ -65,7 +65,7 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
 # ----------- SPT -----------
 
 @app.post("/spt")
-def run_spt(request: SPTRequest):
+def run_spt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
@@ -79,9 +79,8 @@ def run_spt(request: SPTRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
 @app.post("/spt/gantt")
-def run_spt_gantt(request: SPTRequest):
+def run_spt_gantt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
@@ -100,7 +99,7 @@ def run_spt_gantt(request: SPTRequest):
 # ----------- EDD -----------
 
 @app.post("/edd")
-def run_edd(request: SPTRequest):
+def run_edd(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = edd.schedule(request.jobs_data, request.due_dates)
@@ -109,17 +108,20 @@ def run_edd(request: SPTRequest):
             "flowtime": result["flowtime"],
             "retard_cumule": result["retard_cumule"],
             "completion_times": result["completion_times"],
-            "planification": {f"Machine {int(m)}": tasks for m, tasks in result["machines"].items()}
+            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()}
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/edd/gantt")
-def run_edd_gantt(request: SPTRequest):
+def run_edd_gantt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = edd.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop EDD", unite=request.unite)
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop EDD",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -215,7 +217,7 @@ def run_smith_gantt(request: SmithRequest):
 # ----------- Contraintes -----------
 
 @app.post("/contraintes")
-def run_contraintes(request: SPTRequest):
+def run_contraintes(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = contraintes.schedule(request.jobs_data, request.due_dates)
@@ -224,17 +226,20 @@ def run_contraintes(request: SPTRequest):
             "flowtime": result["flowtime"],
             "retard_cumule": result["retard_cumule"],
             "completion_times": result["completion_times"],
-            "planification": {f"Machine {int(m)}": tasks for m, tasks in result["machines"].items()}
+            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()}
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/contraintes/gantt")
-def run_contraintes_gantt(request: SPTRequest):
+def run_contraintes_gantt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = contraintes.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)", unite=request.unite)
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
