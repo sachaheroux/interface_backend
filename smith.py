@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import matplotlib.patches as mpatches
 
 def smith_algorithm(jobs):
@@ -9,37 +8,29 @@ def smith_algorithm(jobs):
     # Tri des jobs par date d'échéance croissante
     sorted_jobs = sorted(enumerate(jobs, start=1), key=lambda x: x[1][1])
 
-    # Calcul de τ
     total_execution_time = sum(job[1][0] for job in sorted_jobs)
-
-    # Séquence des jobs
     sequence = []
 
     while sorted_jobs:
         admissible_jobs = [job for job in sorted_jobs if job[1][1] >= total_execution_time]
-
         if admissible_jobs:
-            max_execution_time_job = max(admissible_jobs, key=lambda x: x[1][0])
-            sequence.insert(0, max_execution_time_job[0])  # Insertion au début de la séquence
-            sorted_jobs.remove(max_execution_time_job)
-            total_execution_time -= max_execution_time_job[1][0]
+            max_job = max(admissible_jobs, key=lambda x: x[1][0])
+            sequence.insert(0, max_job[0])
+            sorted_jobs.remove(max_job)
+            total_execution_time -= max_job[1][0]
         else:
-            raise ValueError("Aucun job admissible trouvé. Tous les jobs ont une date due trop courte pour être planifiés selon l'algorithme de Smith.")
+            raise ValueError("Aucun job admissible trouvé. Tous les jobs ont une date due trop courte.")
 
-    # Calcul du flowtime
-    flowtime = sum((len(sequence) - i) * jobs[job-1][0] for i, job in enumerate(sequence)) / len(sequence)
-
-    # Calcul du nombre moyen de jobs (N)
-    numerator = sum((len(sequence) - i) * jobs[job-1][0] for i, job in enumerate(sequence))
+    flowtime = sum((len(sequence) - i) * jobs[job - 1][0] for i, job in enumerate(sequence)) / len(sequence)
+    numerator = sum((len(sequence) - i) * jobs[job - 1][0] for i, job in enumerate(sequence))
     denominator = sum(job[0] for job in jobs)
     N = numerator / denominator if denominator else 0
 
-    # Calcul du retard cumulé
     cumulative_delay = 0
     for i, job in enumerate(sequence):
-        sum_execution_time = sum(jobs[j-1][0] for j in sequence[:i + 1])
-        if sum_execution_time > jobs[job-1][1]:
-            cumulative_delay += sum_execution_time - jobs[job-1][1]
+        executed = sum(jobs[j - 1][0] for j in sequence[:i + 1])
+        if executed > jobs[job - 1][1]:
+            cumulative_delay += executed - jobs[job - 1][1]
 
     return {
         "sequence": sequence,
@@ -48,32 +39,32 @@ def smith_algorithm(jobs):
         "cumulative_delay": cumulative_delay
     }
 
-def generate_gantt(sequence, jobs, unite="heures"):
+def generate_gantt(sequence, jobs, unite="heures", job_names=None):
     fig, ax = plt.subplots(figsize=(8, 2))
-
-    y_ticks = [1]
-    y_labels = ["Jobs"]
     colors = plt.cm.get_cmap('tab10', len(jobs))
 
     cumulative_time = 0
     for i, job in enumerate(sequence):
-        job_execution_time = jobs[job-1][0]
-        ax.barh(y_ticks[0], job_execution_time, left=cumulative_time, height=0.2, color=colors(i), edgecolor='black')
-        ax.text(cumulative_time + job_execution_time / 2, y_ticks[0], str(job_execution_time),
-                ha='center', va='center', color='white', fontsize=8)
-        cumulative_time += job_execution_time
+        idx = job - 1
+        duration = jobs[idx][0]
+        label = job_names[idx] if job_names and idx < len(job_names) else f"Job {job}"
+
+        ax.barh(1, duration, left=cumulative_time, height=0.3, color=colors(i), edgecolor='black')
+        ax.text(cumulative_time + duration / 2, 1, label, ha='center', va='center', color='white', fontsize=8)
+        cumulative_time += duration
 
     ax.set_xlim(0, cumulative_time)
-    ax.set_xlabel(f"Temps de fabrication ({unite})")
-    ax.set_yticks(y_ticks)
-    ax.set_yticklabels(y_labels)
-    ax.spines['left'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax.set_xlabel(f"Temps ({unite})")
+    ax.set_yticks([1])
+    ax.set_yticklabels(["Séquence"])
+    ax.spines[['left', 'top', 'right']].set_visible(False)
     ax.invert_yaxis()
 
-    legend_elements = [mpatches.Patch(color=colors(i), label=f"Job {sequence[i]}") for i in range(len(sequence))]
+    legend_elements = [
+        mpatches.Patch(color=colors(i), label=job_names[sequence[i] - 1] if job_names else f"Job {sequence[i]}")
+        for i in range(len(sequence))
+    ]
     ax.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left')
-
     plt.subplots_adjust(right=0.8)
     return fig
+

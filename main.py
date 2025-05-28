@@ -37,10 +37,13 @@ class JohnsonRequest(BaseModel):
     jobs_data: List[List[float]]
     due_dates: List[float]
     unite: str = "heures"
+    job_names: List[str]
+    machine_names: List[str]
 
 class SmithRequest(BaseModel):
     jobs: List[List[float]]
     unite: str = "heures"
+    job_names: List[str] = None
 
 # ----------- Gantt -----------
 
@@ -142,7 +145,7 @@ def run_johnson(request: JohnsonRequest):
             "flowtime": result["flowtime"],
             "retard_cumule": result["retard_cumule"],
             "completion_times": result["completion_times"],
-            "planification": {f"Machine {int(m)}": tasks for m, tasks in result["machines"].items()}
+            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()}
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -151,7 +154,10 @@ def run_johnson(request: JohnsonRequest):
 def run_johnson_gantt(request: JohnsonRequest):
     try:
         result = johnson.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson", unite=request.unite)
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -172,7 +178,7 @@ def run_johnson_modifie(request: JohnsonRequest):
             "flowtime": result["flowtime"],
             "retard_cumule": result["retard_cumule"],
             "completion_times": result["completion_times"],
-            "planification": {f"Machine {int(m)}": tasks for m, tasks in result["machines"].items()}
+            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()}
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -181,7 +187,10 @@ def run_johnson_modifie(request: JohnsonRequest):
 def run_johnson_modifie_gantt(request: JohnsonRequest):
     try:
         result = johnson_modifie.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson modifié", unite=request.unite)
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson modifié",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -204,9 +213,10 @@ def run_smith(request: SmithRequest):
 def run_smith_gantt(request: SmithRequest):
     try:
         result = smith.smith_algorithm(request.jobs)
-        fig = smith.generate_gantt(result["sequence"], request.jobs, unite=request.unite)
+        fig = smith.generate_gantt(result["sequence"], request.jobs,
+                                   unite=request.unite,
+                                   job_names=request.job_names)
         buf = io.BytesIO()
-        plt.tight_layout()
         fig.savefig(buf, format="png")
         plt.close(fig)
         buf.seek(0)
@@ -247,7 +257,4 @@ def run_contraintes_gantt(request: ExtendedRequest):
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-
 
