@@ -40,6 +40,13 @@ class JohnsonRequest(BaseModel):
     job_names: List[str]
     machine_names: List[str]
 
+class JohnsonModifieRequest(BaseModel):
+    jobs_data: List[List[List[float]]]
+    due_dates: List[float]
+    unite: str = "heures"
+    job_names: List[str]
+    machine_names: List[str]
+
 class SmithRequest(BaseModel):
     jobs: List[List[float]]
     unite: str = "heures"
@@ -169,7 +176,7 @@ def run_johnson_gantt(request: JohnsonRequest):
 # ----------- Johnson Modifié -----------
 
 @app.post("/johnson_modifie")
-def run_johnson_modifie(request: JohnsonRequest):
+def run_johnson_modifie(request: JohnsonModifieRequest):
     try:
         result = johnson_modifie.schedule(request.jobs_data, request.due_dates)
         return {
@@ -184,7 +191,7 @@ def run_johnson_modifie(request: JohnsonRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/johnson_modifie/gantt")
-def run_johnson_modifie_gantt(request: JohnsonRequest):
+def run_johnson_modifie_gantt(request: JohnsonModifieRequest):
     try:
         result = johnson_modifie.schedule(request.jobs_data, request.due_dates)
         fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson modifié",
@@ -257,5 +264,6 @@ def run_contraintes_gantt(request: ExtendedRequest):
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 
