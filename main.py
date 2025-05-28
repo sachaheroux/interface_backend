@@ -41,7 +41,7 @@ class JohnsonRequest(BaseModel):
     machine_names: List[str]
 
 class JohnsonModifieRequest(BaseModel):
-    jobs_data: List[List[List[float]]]
+    jobs_data: List[List[float]]
     due_dates: List[float]
     unite: str = "heures"
     job_names: List[str]
