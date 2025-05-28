@@ -41,7 +41,7 @@ class JohnsonRequest(BaseModel):
     machine_names: List[str]
 
 class JohnsonModifieRequest(BaseModel):
-    jobs_data: List[List[float]]
+    jobs_data: List[List[List[float]]]
     due_dates: List[float]
     unite: str = "heures"
     job_names: List[str]
@@ -264,6 +264,10 @@ def run_contraintes_gantt(request: ExtendedRequest):
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+
+
 
 
 
