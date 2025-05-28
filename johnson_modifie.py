@@ -1,4 +1,5 @@
 # backend/johnson_modifie.py
+
 from collections import defaultdict
 from typing import List, Tuple
 import numpy as np
@@ -22,14 +23,14 @@ def johnson_schedule(tasks):
     return [list(x) for x in set(tuple(x) for x in backtrack(tasks, 0, len(tasks)-1, [0]*len(tasks)))]
 
 def makespan(schedule, tasks):
-    m = [0]*len(tasks[0])
+    m = [0] * len(tasks[0])
     for i in schedule:
         for j in range(len(tasks[0])):
             m[j] = max(m[j], m[j-1] if j > 0 else 0) + tasks[i-1][j]
     return max(m)
 
 def flowtime(schedule, tasks):
-    m = [0]*len(tasks[0])
+    m = [0] * len(tasks[0])
     completion_times = {}
     for idx, i in enumerate(schedule):
         for j in range(len(tasks[0])):
@@ -39,7 +40,7 @@ def flowtime(schedule, tasks):
 
 def cumulative_delay(schedule, tasks, due_dates):
     schedule_due_dates = [due_dates[i-1] for i in schedule]
-    m = [0]*len(tasks[0])
+    m = [0] * len(tasks[0])
     delays = []
     for i, due_date in zip(schedule, schedule_due_dates):
         for j in range(len(tasks[0])):
@@ -48,7 +49,7 @@ def cumulative_delay(schedule, tasks, due_dates):
         delays.append(delay)
     return sum(delays)
 
-def generate_sub_problems(tasks: List[List[int]]) -> List[Tuple[List[float], List[float]]]:
+def generate_sub_problems(tasks: List[List[float]]) -> List[Tuple[List[float], List[float]]]:
     num_machines = len(tasks[0])
     sub_problems = []
 
@@ -60,27 +61,35 @@ def generate_sub_problems(tasks: List[List[int]]) -> List[Tuple[List[float], Lis
     return sub_problems
 
 def schedule(jobs_data, due_dates):
-    sub_problems = generate_sub_problems(jobs_data)
+    # ➤ Extraction des durées uniquement depuis [ [ [machine, durée], ... ], ... ]
+    durations_only = [[task[1] for task in job] for job in jobs_data]
+
+    sub_problems = generate_sub_problems(durations_only)
     best_schedules = []
 
     for sub_problem in sub_problems:
         pseudo_tasks = list(zip(*sub_problem))
         solutions = johnson_schedule(pseudo_tasks)
-        best_schedule = min(solutions, key=lambda x: makespan(x, jobs_data))
+        best_schedule = min(solutions, key=lambda x: makespan(x, durations_only))
         best_schedules.append(best_schedule)
 
-    best_global_schedule = min(best_schedules, key=lambda x: makespan(x, jobs_data))
-    ftime, completion_times = flowtime(best_global_schedule, jobs_data)
-    delay = cumulative_delay(best_global_schedule, jobs_data, due_dates)
-    mspan = makespan(best_global_schedule, jobs_data)
+    best_global_schedule = min(best_schedules, key=lambda x: makespan(x, durations_only))
+    ftime, completion_times = flowtime(best_global_schedule, durations_only)
+    delay = cumulative_delay(best_global_schedule, durations_only, due_dates)
+    mspan = makespan(best_global_schedule, durations_only)
 
     machines = defaultdict(list)
-    m = [0]*len(jobs_data[0])
+    m = [0] * len(durations_only[0])
     for j in best_global_schedule:
-        job = jobs_data[j-1]
+        job = durations_only[j-1]
         for i in range(len(job)):
             start_time = max(m[i], m[i-1] if i > 0 else 0)
-            machines[i].append({"job": j-1, "task": i, "start": start_time, "duration": job[i]})
+            machines[i].append({
+                "job": j-1,
+                "task": i,
+                "start": start_time,
+                "duration": job[i]
+            })
             m[i] = start_time + job[i]
 
     return {
@@ -91,3 +100,4 @@ def schedule(jobs_data, due_dates):
         "retard_cumule": delay,
         "machines": machines
     }
+
