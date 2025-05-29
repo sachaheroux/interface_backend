@@ -40,5 +40,5 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                 "end_time": end_dt.isoformat()
             })
 
-    return {"groups": groups, "items": items}
+    return {"groups": groups, "items": items, "opening_hours": opening_hours}
 
