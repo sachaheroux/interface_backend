@@ -50,10 +50,17 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
 @app.post("/jobshop/spt")
 def run_jobshop_spt(request: JobshopSPTRequest):
     try:
-        result = jobshop_spt.planifier_jobshop_spt(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
+        validate_jobs_data(request.jobs_data, request.due_dates)
+        result = jobshop_spt.planifier_jobshop_spt(
+            request.job_names,
+            request.machine_names,
+            request.jobs_data,
+            request.due_dates
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.post("/jobshop/spt/gantt")
 def run_jobshop_spt_gantt(request: JobshopSPTRequest):
