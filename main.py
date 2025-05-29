@@ -78,7 +78,7 @@ def run_spt_gantt(request: ExtendedRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/spt/gantt_reel")
+@app.post("/spt/agenda")
 def run_spt_agenda(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
