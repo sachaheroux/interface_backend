@@ -19,13 +19,14 @@ def planifier_jobshop_spt(job_names: List[str], machine_names: List[str], jobs_d
     time = 0
     while jobs:
         available_tasks = [(t, i, j, m) for t, i, j, m in jobs if i == job_indices[j] and 
-                           max(machine_time[m], job_time[j]) <= time]
+                           max(machine_time[int(m)], job_time[j]) <= time]
         if not available_tasks:
             time += 1
             continue
 
         available_tasks.sort()
         t, i, j, m = available_tasks[0]
+        m = int(m)
 
         start_time = max(machine_time[m], job_time[j])
         end_time = start_time + t
