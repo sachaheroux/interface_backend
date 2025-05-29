@@ -2,26 +2,28 @@ from collections import defaultdict
 from typing import List, Dict, Any
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use("Agg")
 import io
 import base64
 
-def planifier_jobshop_spt(job_names: List[str], machine_names: List[str], jobs_data: List[List[List[float]]], due_dates: List[float]) -> Dict[str, Any]:
-    machine_time = defaultdict(int)
-    job_time = defaultdict(int)
-    machines = defaultdict(list)
-    completion_times = defaultdict(int)
-    cumulative_delay = 0
+matplotlib.use("Agg")
 
-    jobs = [(t, i, j, m) for j, job in enumerate(jobs_data) for i, (m, t) in enumerate(job)]
+def planifier_jobshop_spt(job_names: List[str], machine_names: List[str], jobs_data: List[List[List[float]]], due_dates: List[float]) -> Dict[str, Any]:
+    machine_time = defaultdict(float)
+    job_time = defaultdict(float)
+    machines = defaultdict(list)
+    completion_times = defaultdict(float)
+    cumulative_delay = 0.0
+
+    jobs = [(float(t), i, j, int(m)) for j, job in enumerate(jobs_data) for i, (m, t) in enumerate(job)]
     job_indices = defaultdict(int)
 
-    time = 0
+    time = 0.0
     while jobs:
         available_tasks = [(t, i, j, m) for t, i, j, m in jobs if i == job_indices[j] and 
                            max(machine_time[m], job_time[j]) <= time]
         if not available_tasks:
-            time += 1
+            time += 0.1
+            time = round(time, 2)
             continue
 
         available_tasks.sort()
@@ -45,14 +47,15 @@ def planifier_jobshop_spt(job_names: List[str], machine_names: List[str], jobs_d
         delay = max(completion_times[j] - due_dates[j], 0)
         cumulative_delay += delay
 
-        time += 1
+        time += 0.1
+        time = round(time, 2)
 
     makespan = max(machine_time.values())
     flowtime = sum(completion_times.values())
 
     schedule = []
     for m_index, tasks in machines.items():
-        machine_name = machine_names[int(m_index)]
+        machine_name = machine_names[m_index]
         for task in tasks:
             schedule.append({
                 "job": task["job"],
@@ -72,20 +75,19 @@ def planifier_jobshop_spt(job_names: List[str], machine_names: List[str], jobs_d
 
 def generer_gantt_jobshop(schedule: List[Dict[str, Any]]) -> str:
     machines = list({task["machine"] for task in schedule})
+    jobs = list({task["job"] for task in schedule})
     machines.sort()
+    jobs.sort()
     machine_index = {m: i for i, m in enumerate(machines)}
-
-    job_ids = sorted({task["job"] for task in schedule})
-    job_color_index = {job: idx for idx, job in enumerate(job_ids)}
+    job_colors = {job: f"C{i % 10}" for i, job in enumerate(jobs)}
 
     fig, ax = plt.subplots(figsize=(10, len(machines)))
     for task in schedule:
         y = machine_index[task["machine"]]
-        color_id = job_color_index[task["job"]] % 10
         ax.broken_barh(
             [(task["start"], task["end"] - task["start"])],
             (y - 0.4, 0.8),
-            facecolors=f"C{color_id}"
+            facecolors=job_colors[task["job"]]
         )
         ax.text(
             task["start"] + (task["end"] - task["start"]) / 2,
@@ -106,3 +108,4 @@ def generer_gantt_jobshop(schedule: List[Dict[str, Any]]) -> str:
     plt.close(fig)
     buf.seek(0)
     return base64.b64encode(buf.read()).decode('utf-8')
+
