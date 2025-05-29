@@ -12,7 +12,7 @@ import johnson_modifie
 import smith
 import contraintes
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest
-from agenda_utils import generer_agenda_reel_json  # version JSON pour react-calendar-timeline
+from agenda_utils import generer_agenda_json
 
 app = FastAPI()
 
@@ -23,6 +23,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ----------- Gantt utilitaire -----------
 
 def create_gantt_figure(result, title: str, unite="heures", job_names=None, machine_names=None):
     fig, ax = plt.subplots(figsize=(10, 3))
@@ -41,6 +43,8 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     ax.set_title(title)
     plt.tight_layout()
     return fig
+
+# ----------- Algorithme SPT -----------
 
 @app.post("/spt")
 def run_spt(request: ExtendedRequest):
@@ -79,7 +83,7 @@ def run_spt_agenda(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
-        agenda_json = generer_agenda_reel_json(
+        agenda_json = generer_agenda_json(
             result=result,
             start_datetime_str=request.agenda_start_datetime,
             opening_hours=request.opening_hours,
@@ -92,9 +96,6 @@ def run_spt_agenda(request: ExtendedRequest):
         return JSONResponse(content=agenda_json)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-
 # ----------- EDD -----------
 
 @app.post("/edd")
