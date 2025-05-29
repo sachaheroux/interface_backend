@@ -4,8 +4,6 @@ from fastapi.responses import StreamingResponse
 from typing import List
 import matplotlib.pyplot as plt
 import io
-from datetime import datetime, timedelta, time as dt_time
-import matplotlib.dates as mdates
 
 import spt
 import edd
@@ -80,16 +78,19 @@ def run_spt_gantt(request: ExtendedRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/spt/agenda")
+@app.post("/spt/gantt_reel")
 def run_spt_agenda(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
-        fig = generer_agenda_reel(result, request)
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png")
-        plt.close(fig)
-        buf.seek(0)
+        buf = generer_agenda_reel(
+            result=result,
+            start_datetime_str=request.agenda_start_datetime,
+            opening_hours=request.opening_hours,
+            weekend_days=request.weekend_days,
+            jours_feries=request.jours_feries,
+            unite=request.unite
+        )
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
