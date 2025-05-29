@@ -19,14 +19,13 @@ def planifier_jobshop_spt(job_names: List[str], machine_names: List[str], jobs_d
     time = 0
     while jobs:
         available_tasks = [(t, i, j, m) for t, i, j, m in jobs if i == job_indices[j] and 
-                           max(machine_time[int(m)], job_time[j]) <= time]
+                           max(machine_time[m], job_time[j]) <= time]
         if not available_tasks:
             time += 1
             continue
 
         available_tasks.sort()
         t, i, j, m = available_tasks[0]
-        m = int(m)
 
         start_time = max(machine_time[m], job_time[j])
         end_time = start_time + t
@@ -76,13 +75,17 @@ def generer_gantt_jobshop(schedule: List[Dict[str, Any]]) -> str:
     machines.sort()
     machine_index = {m: i for i, m in enumerate(machines)}
 
+    job_ids = sorted({task["job"] for task in schedule})
+    job_color_index = {job: idx for idx, job in enumerate(job_ids)}
+
     fig, ax = plt.subplots(figsize=(10, len(machines)))
     for task in schedule:
         y = machine_index[task["machine"]]
+        color_id = job_color_index[task["job"]] % 10
         ax.broken_barh(
             [(task["start"], task["end"] - task["start"])],
             (y - 0.4, 0.8),
-            facecolors=f"C{hash(task['job']) % 10}"
+            facecolors=f"C{color_id}"
         )
         ax.text(
             task["start"] + (task["end"] - task["start"]) / 2,
