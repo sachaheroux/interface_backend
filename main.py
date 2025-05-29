@@ -34,9 +34,9 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     for m_idx, (m, tasks) in enumerate(result["machines"].items()):
         label = machine_names[int(m)] if machine_names else f"Machine {int(m)}"
         for t in tasks:
-            job_label = job_names[t["job"]] if job_names else f"J{t['job']}"
-            ax.barh(label, t["duration"], left=t["start"], color=colors[t["job"] % len(colors)])
-            ax.text(t["start"] + t["duration"] / 2, label, job_label,
+            job_label = t["job"] if isinstance(t["job"], str) else job_names[t["job"]] if job_names else f"J{t['job']}"
+            ax.barh(label, t["end"] - t["start"], left=t["start"], color=colors[t["job"] % len(colors)] if isinstance(t["job"], int) else "#4f46e5")
+            ax.text(t["start"] + (t["end"] - t["start"]) / 2, label, job_label,
                     va="center", ha="center", color="white", fontsize=8)
 
     ax.set_xlabel(f"Temps ({unite})")
@@ -50,24 +50,33 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
 @app.post("/jobshop/spt")
 def run_jobshop_spt(request: JobshopSPTRequest):
     try:
-        validate_jobs_data(request.jobs_data, request.due_dates)
-        result = jobshop_spt.planifier_jobshop_spt(
-            request.job_names,
-            request.machine_names,
-            request.jobs_data,
-            request.due_dates
-        )
+        result = jobshop_spt.planifier_jobshop_spt(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 @app.post("/jobshop/spt/gantt")
 def run_jobshop_spt_gantt(request: JobshopSPTRequest):
     try:
         result = jobshop_spt.planifier_jobshop_spt(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
-        gantt_base64 = jobshop_spt.generer_gantt_jobshop(result["schedule"])
-        return {"image_base64": gantt_base64}
+        machines_dict = {}
+        for t in result["schedule"]:
+            m_idx = request.machine_names.index(t["machine"])
+            machines_dict.setdefault(m_idx, []).append({
+                "job": t["job"],
+                "start": t["start"],
+                "end": t["end"]
+            })
+        result_formatted = {"machines": machines_dict}
+        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop SPT",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
