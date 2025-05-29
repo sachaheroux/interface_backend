@@ -80,6 +80,13 @@ class SmithRequest(BaseModel):
     unite: str = "heures"
     job_names: List[str] = None
 
+class JobshopSPTRequest(BaseModel):
+    jobs_data: List[List[List[float]]]
+    due_dates: List[float]
+    job_names: List[str]
+    machine_names: List[str]
+
+
 
 
 

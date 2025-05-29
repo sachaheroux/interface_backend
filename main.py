@@ -11,7 +11,8 @@ import johnson
 import johnson_modifie
 import smith
 import contraintes
-from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest
+import jobshop_spt
+from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
 app = FastAPI()
@@ -43,6 +44,25 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     ax.set_title(title)
     plt.tight_layout()
     return fig
+
+# ----------- Jobshop SPT -----------
+
+@app.post("/jobshop/spt")
+def run_jobshop_spt(request: JobshopSPTRequest):
+    try:
+        result = jobshop_spt.planifier_jobshop_spt(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/spt/gantt")
+def run_jobshop_spt_gantt(request: JobshopSPTRequest):
+    try:
+        result = jobshop_spt.planifier_jobshop_spt(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
+        gantt_base64 = jobshop_spt.generer_gantt_jobshop(result["schedule"])
+        return {"image_base64": gantt_base64}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # ----------- Algorithme SPT -----------
 
