@@ -52,7 +52,7 @@ def planifier_jobshop_spt(job_names: List[str], machine_names: List[str], jobs_d
 
     schedule = []
     for m_index, tasks in machines.items():
-        machine_name = machine_names[m_index]
+        machine_name = machine_names[int(m_index)]
         for task in tasks:
             schedule.append({
                 "job": task["job"],
