@@ -85,6 +85,8 @@ class JobshopSPTRequest(BaseModel):
     due_dates: List[float]
     job_names: List[str]
     machine_names: List[str]
+    unite: str = "heures"
+
 
 
 
