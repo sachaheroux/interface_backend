@@ -1,4 +1,5 @@
-from typing import List
+from typing import List, Dict, Optional
+from pydantic import BaseModel
 
 def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float]):
     if not jobs_data:
@@ -23,7 +24,6 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
 
             machine, duration = task
 
-            # ⚠️ Conversion explicite de machine en entier
             try:
                 machine = int(machine)
             except Exception:
@@ -42,5 +42,21 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
         raise ValueError(
             f"Un indice de machine ({max_machine_index}) est supérieur ou égal au nombre de tâches ({nb_taches_reference})."
         )
+
+# Nouveau modèle enrichi
+class ExtendedRequest(BaseModel):
+    jobs_data: List[List[List[float]]]
+    due_dates: List[float]
+    unite: str = "heures"
+    job_names: List[str]
+    machine_names: List[str]
+
+    # Champs avancés (optionnels)
+    agenda_start_datetime: Optional[str] = None
+    opening_hours: Optional[Dict[str, str]] = None  # { "start": "08:00", "end": "17:00" }
+    weekend_days: Optional[List[str]] = None        # ["samedi", "dimanche"]
+    jours_feries: Optional[List[str]] = None        # ["2025-05-30", ...]
+    due_date_times: Optional[List[str]] = None      # Par job, ex: ["2025-06-01T14:00", ...]
+
 
 

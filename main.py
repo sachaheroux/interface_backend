@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from typing import List
 import matplotlib.pyplot as plt
 import io
@@ -12,7 +11,7 @@ import johnson
 import johnson_modifie
 import smith
 import contraintes
-from validation import validate_jobs_data
+from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest
 
 app = FastAPI()
 
@@ -23,34 +22,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ----------- Modèles -----------
-
-class ExtendedRequest(BaseModel):
-    jobs_data: List[List[List[float]]]
-    due_dates: List[float]
-    unite: str = "heures"
-    job_names: List[str]
-    machine_names: List[str]
-
-class JohnsonRequest(BaseModel):
-    jobs_data: List[List[float]]
-    due_dates: List[float]
-    unite: str = "heures"
-    job_names: List[str]
-    machine_names: List[str]
-
-class JohnsonModifieRequest(BaseModel):
-    jobs_data: List[List[List[float]]]
-    due_dates: List[float]
-    unite: str = "heures"
-    job_names: List[str]
-    machine_names: List[str]
-
-class SmithRequest(BaseModel):
-    jobs: List[List[float]]
-    unite: str = "heures"
-    job_names: List[str] = None
 
 # ----------- Gantt -----------
 
@@ -79,6 +50,14 @@ def run_spt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
+
+        # 🔍 Les champs avancés sont collectés ici si besoin dans le futur :
+        # request.agenda_start_datetime
+        # request.opening_hours
+        # request.weekend_days
+        # request.jours_feries
+        # request.due_date_times
+
         return {
             "makespan": result["makespan"],
             "flowtime": result["flowtime"],
@@ -264,6 +243,7 @@ def run_contraintes_gantt(request: ExtendedRequest):
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 
 
