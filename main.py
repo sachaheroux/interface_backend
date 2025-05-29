@@ -4,6 +4,8 @@ from fastapi.responses import StreamingResponse
 from typing import List
 import matplotlib.pyplot as plt
 import io
+from datetime import datetime, timedelta, time as dt_time
+import matplotlib.dates as mdates
 
 import spt
 import edd
@@ -12,6 +14,7 @@ import johnson_modifie
 import smith
 import contraintes
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest
+from agenda_utils import generer_agenda_reel
 
 app = FastAPI()
 
@@ -50,14 +53,6 @@ def run_spt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
-
-        # 🔍 Les champs avancés sont collectés ici si besoin dans le futur :
-        # request.agenda_start_datetime
-        # request.opening_hours
-        # request.weekend_days
-        # request.jours_feries
-        # request.due_date_times
-
         return {
             "makespan": result["makespan"],
             "flowtime": result["flowtime"],
@@ -77,6 +72,20 @@ def run_spt_gantt(request: ExtendedRequest):
                                   unite=request.unite,
                                   job_names=request.job_names,
                                   machine_names=request.machine_names)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/spt/agenda")
+def run_spt_agenda(request: ExtendedRequest):
+    try:
+        validate_jobs_data(request.jobs_data, request.due_dates)
+        result = spt.schedule(request.jobs_data, request.due_dates)
+        fig = generer_agenda_reel(result, request)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
