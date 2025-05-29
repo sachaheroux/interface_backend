@@ -1,6 +1,8 @@
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 
+# ----------- Validation des données de jobs -----------
+
 def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float]):
     if not jobs_data:
         raise ValueError("La liste des jobs est vide.")
@@ -43,7 +45,8 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
             f"Un indice de machine ({max_machine_index}) est supérieur ou égal au nombre de tâches ({nb_taches_reference})."
         )
 
-# Nouveau modèle enrichi
+# ----------- Modèles Pydantic utilisés dans main.py -----------
+
 class ExtendedRequest(BaseModel):
     jobs_data: List[List[List[float]]]
     due_dates: List[float]
@@ -51,12 +54,32 @@ class ExtendedRequest(BaseModel):
     job_names: List[str]
     machine_names: List[str]
 
-    # Champs avancés (optionnels)
+    # Champs avancés optionnels
     agenda_start_datetime: Optional[str] = None
-    opening_hours: Optional[Dict[str, str]] = None  # { "start": "08:00", "end": "17:00" }
-    weekend_days: Optional[List[str]] = None        # ["samedi", "dimanche"]
-    jours_feries: Optional[List[str]] = None        # ["2025-05-30", ...]
-    due_date_times: Optional[List[str]] = None      # Par job, ex: ["2025-06-01T14:00", ...]
+    opening_hours: Optional[Dict[str, str]] = None
+    weekend_days: Optional[List[str]] = None
+    jours_feries: Optional[List[str]] = None
+    due_date_times: Optional[List[str]] = None
+
+class JohnsonRequest(BaseModel):
+    jobs_data: List[List[float]]
+    due_dates: List[float]
+    unite: str = "heures"
+    job_names: List[str]
+    machine_names: List[str]
+
+class JohnsonModifieRequest(BaseModel):
+    jobs_data: List[List[List[float]]]
+    due_dates: List[float]
+    unite: str = "heures"
+    job_names: List[str]
+    machine_names: List[str]
+
+class SmithRequest(BaseModel):
+    jobs: List[List[float]]
+    unite: str = "heures"
+    job_names: List[str] = None
+
 
 
 
