@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List
 import matplotlib.pyplot as plt
 import io
@@ -24,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ----------- Gantt -----------
+# ----------- Gantt utilitaire -----------
 
 def create_gantt_figure(result, title: str, unite="heures", job_names=None, machine_names=None):
     fig, ax = plt.subplots(figsize=(10, 3))
@@ -44,7 +44,7 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     plt.tight_layout()
     return fig
 
-# ----------- SPT -----------
+# ----------- Algorithme SPT -----------
 
 @app.post("/spt")
 def run_spt(request: ExtendedRequest):
@@ -83,17 +83,20 @@ def run_spt_agenda(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = spt.schedule(request.jobs_data, request.due_dates)
-        buf = generer_agenda_reel(
+        agenda_json = generer_agenda_reel(
             result=result,
             start_datetime_str=request.agenda_start_datetime,
             opening_hours=request.opening_hours,
             weekend_days=request.weekend_days,
             jours_feries=request.jours_feries,
-            unite=request.unite
+            unite=request.unite,
+            machine_names=request.machine_names,
+            job_names=request.job_names
         )
-        return StreamingResponse(buf, media_type="image/png")
+        return JSONResponse(content=agenda_json)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 # ----------- EDD -----------
 
