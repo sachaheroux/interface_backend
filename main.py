@@ -34,9 +34,11 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     for m_idx, (m, tasks) in enumerate(result["machines"].items()):
         label = machine_names[int(m)] if machine_names else f"Machine {int(m)}"
         for t in tasks:
-            job_label = t["job"] if isinstance(t["job"], str) else job_names[t["job"]] if job_names else f"J{t['job']}"
-            ax.barh(label, t["end"] - t["start"], left=t["start"], color=colors[t["job"] % len(colors)] if isinstance(t["job"], int) else "#4f46e5")
-            ax.text(t["start"] + (t["end"] - t["start"]) / 2, label, job_label,
+            job_idx = t["job"] if isinstance(t["job"], int) else job_names.index(t["job"])
+            job_label = job_names[job_idx] if job_names else f"J{job_idx}"
+            color = colors[job_idx % len(colors)]
+            ax.barh(label, t["duration"], left=t["start"], color=color)
+            ax.text(t["start"] + t["duration"] / 2, label, job_label,
                     va="center", ha="center", color="white", fontsize=8)
 
     ax.set_xlabel(f"Temps ({unite})")
@@ -65,7 +67,7 @@ def run_jobshop_spt_gantt(request: JobshopSPTRequest):
             machines_dict.setdefault(m_idx, []).append({
                 "job": t["job"],
                 "start": t["start"],
-                "end": t["end"]
+                "duration": t["end"] - t["start"]
             })
         result_formatted = {"machines": machines_dict}
         fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop SPT",
