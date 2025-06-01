@@ -12,6 +12,7 @@ import johnson_modifie
 import smith
 import contraintes
 import jobshop_spt
+import jobshop_edd
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
@@ -82,6 +83,41 @@ def run_jobshop_spt_gantt(request: JobshopSPTRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# ----------- Jobshop EDD -----------
+
+@app.post("/jobshop/edd")
+def run_jobshop_edd(request: JobshopSPTRequest):
+    try:
+        result = jobshop_edd.planifier_jobshop_edd(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/edd/gantt")
+def run_jobshop_edd_gantt(request: JobshopSPTRequest):
+    try:
+        result = jobshop_edd.planifier_jobshop_edd(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
+        machines_dict = {}
+        for t in result["schedule"]:
+            m_idx = request.machine_names.index(t["machine"])
+            machines_dict.setdefault(m_idx, []).append({
+                "job": t["job"],
+                "start": t["start"],
+                "duration": t["end"] - t["start"]
+            })
+        result_formatted = {"machines": machines_dict}
+        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop EDD",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # ----------- Algorithme SPT -----------
 
 @app.post("/spt")
@@ -134,6 +170,7 @@ def run_spt_agenda(request: ExtendedRequest):
         return JSONResponse(content=agenda_json)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 # ----------- EDD -----------
 
 @app.post("/edd")
