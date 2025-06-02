@@ -28,6 +28,7 @@ from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMS
 from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
 from fms_sac_a_dos_glouton import solve_fms_sac_a_dos_glouton, generate_fms_sac_a_dos_glouton_chart, FMSSacADosGloutonRequest
 from fms_lots_production_glouton import solve_fms_lots_production_glouton, generate_fms_lots_production_glouton_chart, FMSLotsProductionGloutonRequest
+from fms_lots_production_mip import solve_fms_lots_production_mip, generate_fms_lots_production_mip_chart, FMSLotsProductionMIPRequest
 
 app = FastAPI()
 
@@ -842,6 +843,37 @@ def run_fms_lots_production_glouton_chart(request: dict):
         return StreamingResponse(img_buffer, media_type="image/png")
     except Exception as e:
         print(f"Error in FMS lots production glouton chart: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------- FMS Lots de Production MIP -----------
+
+@app.post("/fms/lots_production_mip")
+def run_fms_lots_production_mip_analysis(request: dict):
+    try:
+        print(f"Received lots production MIP request: {request}")
+        fms_request = FMSLotsProductionMIPRequest(**request)
+        print("Lots production MIP request validation successful")
+        result = solve_fms_lots_production_mip(fms_request)
+        print("Lots production MIP algorithm execution successful")
+        return result
+    except Exception as e:
+        print(f"Error in FMS lots production MIP endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fms/lots_production_mip/chart")
+def run_fms_lots_production_mip_chart(request: dict):
+    try:
+        print(f"Received lots production MIP chart request: {request}")
+        fms_request = FMSLotsProductionMIPRequest(**request)
+        
+        # Générer le graphique directement
+        img_buffer = generate_fms_lots_production_mip_chart(fms_request)
+        
+        return StreamingResponse(img_buffer, media_type="image/png")
+    except Exception as e:
+        print(f"Error in FMS lots production MIP chart: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
