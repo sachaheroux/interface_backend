@@ -22,6 +22,7 @@ import ligne_assemblage_pl
 import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
 import ligne_transfert_buffer_buzzacott
+import fms_sac_a_dos
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
@@ -685,6 +686,34 @@ def run_buffer_buzzacott_chart(request: dict):
         
         # Générer le graphique
         image_base64 = ligne_transfert_buffer_buzzacott.generate_buffer_buzzacott_chart(result)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(image_base64)
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ----------- FMS Sac à Dos -----------
+
+@app.post("/fms/sac_a_dos")
+def run_fms_sac_a_dos_analysis(request: dict):
+    try:
+        fms_request = fms_sac_a_dos.FMSSacADosRequest(**request)
+        result = fms_sac_a_dos.solve_fms_sac_a_dos(fms_request)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/fms/sac_a_dos/chart")
+def run_fms_sac_a_dos_chart(request: dict):
+    try:
+        fms_request = fms_sac_a_dos.FMSSacADosRequest(**request)
+        result = fms_sac_a_dos.solve_fms_sac_a_dos(fms_request)
+        
+        # Générer le graphique
+        image_base64 = fms_sac_a_dos.generate_fms_sac_a_dos_chart(result)
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(image_base64)
