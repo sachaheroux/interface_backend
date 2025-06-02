@@ -18,6 +18,7 @@ import jobshop_contraintes
 import ligne_assemblage_precedence
 import ligne_assemblage_comsoal
 import ligne_assemblage_lpt
+import ligne_assemblage_pl
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
@@ -542,6 +543,64 @@ def run_lpt_chart(request: dict):
             task_tuples.append((task_id, predecessors, duration))
         
         result = ligne_assemblage_lpt.lpt_algorithm(task_tuples, cycle_time, unite)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(result["graphique"])
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage/pl")
+def run_pl_analysis(request: dict):
+    try:
+        tasks_data = request.get("tasks_data", [])
+        cycle_time = request.get("cycle_time", 70)
+        unite = request.get("unite", "minutes")
+        
+        # Convertir les données de tâches en tuples
+        task_tuples = []
+        for task in tasks_data:
+            task_id = task.get("id")
+            predecessors = task.get("predecessors")
+            duration = task.get("duration")
+            
+            # Convertir predecessors None en None, sinon garder la valeur
+            if predecessors is None or predecessors == [] or predecessors == "":
+                predecessors = None
+            elif isinstance(predecessors, list) and len(predecessors) == 1:
+                predecessors = predecessors[0]
+            
+            task_tuples.append((task_id, predecessors, duration))
+        
+        result = ligne_assemblage_pl.pl_algorithm(task_tuples, cycle_time, unite)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage/pl/chart")
+def run_pl_chart(request: dict):
+    try:
+        tasks_data = request.get("tasks_data", [])
+        cycle_time = request.get("cycle_time", 70)
+        unite = request.get("unite", "minutes")
+        
+        # Convertir les données de tâches en tuples
+        task_tuples = []
+        for task in tasks_data:
+            task_id = task.get("id")
+            predecessors = task.get("predecessors")
+            duration = task.get("duration")
+            
+            if predecessors is None or predecessors == [] or predecessors == "":
+                predecessors = None
+            elif isinstance(predecessors, list) and len(predecessors) == 1:
+                predecessors = predecessors[0]
+            
+            task_tuples.append((task_id, predecessors, duration))
+        
+        result = ligne_assemblage_pl.pl_algorithm(task_tuples, cycle_time, unite)
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(result["graphique"])
