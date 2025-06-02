@@ -29,6 +29,7 @@ from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
 from fms_sac_a_dos_glouton import solve_fms_sac_a_dos_glouton, generate_fms_sac_a_dos_glouton_chart, FMSSacADosGloutonRequest
 from fms_lots_production_glouton import solve_fms_lots_production_glouton, generate_fms_lots_production_glouton_chart, FMSLotsProductionGloutonRequest
 from fms_lots_production_mip import solve_fms_lots_production_mip, generate_fms_lots_production_mip_chart, FMSLotsProductionMIPRequest
+from fms_lots_chargement_heuristique import solve_fms_lots_chargement_heuristique, generate_fms_lots_chargement_heuristique_chart, FMSLotsChargementHeuristiqueRequest
 
 app = FastAPI()
 
@@ -874,6 +875,37 @@ def run_fms_lots_production_mip_chart(request: dict):
         return StreamingResponse(img_buffer, media_type="image/png")
     except Exception as e:
         print(f"Error in FMS lots production MIP chart: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------- FMS Lots de Chargement Heuristique -----------
+
+@app.post("/fms/lots_chargement_heuristique")
+def run_fms_lots_chargement_heuristique_analysis(request: dict):
+    try:
+        print(f"Received lots chargement heuristique request: {request}")
+        fms_request = FMSLotsChargementHeuristiqueRequest(**request)
+        print("Lots chargement heuristique request validation successful")
+        result = solve_fms_lots_chargement_heuristique(fms_request)
+        print("Lots chargement heuristique algorithm execution successful")
+        return result
+    except Exception as e:
+        print(f"Error in FMS lots chargement heuristique endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fms/lots_chargement_heuristique/chart")
+def run_fms_lots_chargement_heuristique_chart(request: dict):
+    try:
+        print(f"Received lots chargement heuristique chart request: {request}")
+        fms_request = FMSLotsChargementHeuristiqueRequest(**request)
+        
+        # Générer le graphique directement
+        img_buffer = generate_fms_lots_chargement_heuristique_chart(fms_request)
+        
+        return StreamingResponse(img_buffer, media_type="image/png")
+    except Exception as e:
+        print(f"Error in FMS lots chargement heuristique chart: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
