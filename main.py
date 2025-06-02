@@ -27,6 +27,7 @@ from agenda_utils import generer_agenda_json
 from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMSSacADosRequest
 from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
 from fms_sac_a_dos_glouton import solve_fms_sac_a_dos_glouton, generate_fms_sac_a_dos_glouton_chart, FMSSacADosGloutonRequest
+from fms_lots_production_glouton import solve_fms_lots_production_glouton, generate_fms_lots_production_glouton_chart, FMSLotsProductionGloutonRequest
 
 app = FastAPI()
 
@@ -810,6 +811,37 @@ def run_fms_sac_a_dos_glouton_chart(request: dict):
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         print(f"Error in FMS glouton chart: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------- FMS Lots de Production Glouton -----------
+
+@app.post("/fms/lots_production_glouton")
+def run_fms_lots_production_glouton_analysis(request: dict):
+    try:
+        print(f"Received lots production glouton request: {request}")
+        fms_request = FMSLotsProductionGloutonRequest(**request)
+        print("Lots production glouton request validation successful")
+        result = solve_fms_lots_production_glouton(fms_request)
+        print("Lots production glouton algorithm execution successful")
+        return result
+    except Exception as e:
+        print(f"Error in FMS lots production glouton endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fms/lots_production_glouton/chart")
+def run_fms_lots_production_glouton_chart(request: dict):
+    try:
+        print(f"Received lots production glouton chart request: {request}")
+        fms_request = FMSLotsProductionGloutonRequest(**request)
+        
+        # Générer le graphique directement
+        img_buffer = generate_fms_lots_production_glouton_chart(fms_request)
+        
+        return StreamingResponse(img_buffer, media_type="image/png")
+    except Exception as e:
+        print(f"Error in FMS lots production glouton chart: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
