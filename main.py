@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List
 import matplotlib.pyplot as plt
 import io
+import base64
 
 import spt
 import edd
@@ -14,6 +15,7 @@ import contraintes
 import jobshop_spt
 import jobshop_edd
 import jobshop_contraintes
+import ligne_assemblage_precedence
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
@@ -361,6 +363,69 @@ def run_contraintes_gantt(request: ExtendedRequest):
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ----------- Ligne d'assemblage - Précédence -----------
+
+class PrecedenceRequest:
+    def __init__(self, tasks_data: List[dict], unite: str = "minutes"):
+        self.tasks_data = tasks_data
+        self.unite = unite
+
+@app.post("/ligne_assemblage/precedence")
+def run_precedence_analysis(request: dict):
+    try:
+        tasks_data = request.get("tasks_data", [])
+        unite = request.get("unite", "minutes")
+        
+        # Convertir les données de tâches en tuples
+        task_tuples = []
+        for task in tasks_data:
+            task_id = task.get("id")
+            predecessors = task.get("predecessors")
+            duration = task.get("duration")
+            
+            # Convertir predecessors None en None, sinon garder la valeur
+            if predecessors is None or predecessors == [] or predecessors == "":
+                predecessors = None
+            elif isinstance(predecessors, list) and len(predecessors) == 1:
+                predecessors = predecessors[0]
+            
+            task_tuples.append((task_id, predecessors, duration))
+        
+        result = ligne_assemblage_precedence.create_precedence_diagram(task_tuples, unite)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage/precedence/diagram")
+def run_precedence_diagram(request: dict):
+    try:
+        tasks_data = request.get("tasks_data", [])
+        unite = request.get("unite", "minutes")
+        
+        # Convertir les données de tâches en tuples
+        task_tuples = []
+        for task in tasks_data:
+            task_id = task.get("id")
+            predecessors = task.get("predecessors")
+            duration = task.get("duration")
+            
+            if predecessors is None or predecessors == [] or predecessors == "":
+                predecessors = None
+            elif isinstance(predecessors, list) and len(predecessors) == 1:
+                predecessors = predecessors[0]
+            
+            task_tuples.append((task_id, predecessors, duration))
+        
+        result = ligne_assemblage_precedence.create_precedence_diagram(task_tuples, unite)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(result["graphique"])
+        buf = io.BytesIO(image_data)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
