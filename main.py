@@ -21,6 +21,7 @@ import ligne_assemblage_lpt
 import ligne_assemblage_pl
 import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
+import ligne_transfert_buffer_buzzacott
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
@@ -660,6 +661,30 @@ def run_equilibrage_chart(request: dict):
         
         # Générer le graphique
         image_base64 = ligne_assemblage_mixte_equilibrage.generate_equilibrage_chart(result)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(image_base64)
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_transfert/buffer_buzzacott")
+def run_buffer_buzzacott_analysis(request: dict):
+    try:
+        result = ligne_transfert_buffer_buzzacott.solve_buffer_buzzacott(request)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_transfert/buffer_buzzacott/chart")
+def run_buffer_buzzacott_chart(request: dict):
+    try:
+        result = ligne_transfert_buffer_buzzacott.solve_buffer_buzzacott(request)
+        
+        # Générer le graphique
+        image_base64 = ligne_transfert_buffer_buzzacott.generate_buffer_buzzacott_chart(result)
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(image_base64)
