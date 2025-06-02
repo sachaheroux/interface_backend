@@ -14,6 +14,7 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
     """
     # Calcul du temps total pondéré par les modèles
     T = sum([sum(np.multiply(models, [task[i][1] for i in range(1, len(task))])) for task in tasks_data])
+    T = float(T)  # Convert to native Python float
     K_min = T / cycle_time
 
     # Définition des stations (on prend une marge de sécurité)
@@ -42,7 +43,7 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
     for task in tasks_data:
         task_id = task[0]
         weighted_time = sum(np.multiply(models, [task[i][1] for i in range(1, len(task))]))
-        weighted_processing_times[task_id] = weighted_time
+        weighted_processing_times[task_id] = float(weighted_time)  # Convert to native Python float
 
     # Création du problème de programmation linéaire
     prob = LpProblem("MixedAssemblyLineScheduling", LpMinimize)
@@ -110,33 +111,33 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
 
     # Métriques globales
     avg_utilization = total_utilization / used_stations if used_stations > 0 else 0
-    utilization_variance = np.var(list(station_utilizations.values())) if station_utilizations else 0
+    utilization_variance = float(np.var(list(station_utilizations.values()))) if station_utilizations else 0
     efficiency = (K_min / used_stations) * 100 if used_stations > 0 else 0
 
     # Préparation des résultats détaillés par station
     stations_details = []
     for j in sorted(station_utilizations.keys()):
         stations_details.append({
-            "station": j,
+            "station": int(j),  # Convert to native Python int
             "tasks": assigned_tasks[j],
-            "load": round(station_loads[j], 2),
-            "utilization": round(station_utilizations[j], 2)
+            "load": round(float(station_loads[j]), 2),  # Convert to native Python float
+            "utilization": round(float(station_utilizations[j]), 2)  # Convert to native Python float
         })
 
     results = {
         "status": status,
         "optimal": status == "Optimal",
-        "used_stations": used_stations,
-        "theoretical_min_stations": round(K_min, 2),
-        "efficiency": round(efficiency, 2),
-        "avg_utilization": round(avg_utilization, 2),
-        "max_utilization": round(max_utilization, 2),
-        "min_utilization": round(min_utilization, 2) if min_utilization < 100 else 0,
-        "utilization_variance": round(utilization_variance, 2),
-        "cycle_time": cycle_time,
-        "total_weighted_time": round(T, 2),
-        "stations": stations_details,
-        "models_demand": models
+        "stations_used": int(used_stations),  # Frontend expects 'stations_used'
+        "theoretical_minimum": round(float(K_min), 2),  # Frontend expects 'theoretical_minimum'
+        "efficiency": round(float(efficiency), 2),
+        "average_utilization": round(float(avg_utilization), 2),  # Frontend expects 'average_utilization'
+        "max_utilization": round(float(max_utilization), 2),
+        "min_utilization": round(float(min_utilization), 2) if min_utilization < 100 else 0,
+        "utilization_variance": round(float(utilization_variance), 2),
+        "cycle_time": float(cycle_time),
+        "total_weighted_time": round(float(T), 2),
+        "station_assignments": stations_details,  # Frontend expects 'station_assignments'
+        "models_demand": list(models)
     }
 
     return results
@@ -151,8 +152,8 @@ def generate_equilibrage_chart(results):
     colors = ['#8B5CF6', '#A78BFA', '#C4B5FD', '#DDD6FE', '#EDE9FE', '#F5F3FF']
     
     # Graphique 1 : Utilisation par station
-    stations = [s["station"] for s in results["stations"]]
-    utilizations = [s["utilization"] for s in results["stations"]]
+    stations = [s["station"] for s in results["station_assignments"]]
+    utilizations = [s["utilization"] for s in results["station_assignments"]]
     
     bars1 = ax1.bar(stations, utilizations, 
                    color=colors[:len(stations)], 
@@ -161,7 +162,7 @@ def generate_equilibrage_chart(results):
                    linewidth=0.5)
     
     ax1.axhline(y=100, color='red', linestyle='--', alpha=0.7, label='Capacité maximale')
-    ax1.axhline(y=results["avg_utilization"], color='orange', linestyle=':', alpha=0.8, label='Utilisation moyenne')
+    ax1.axhline(y=results["average_utilization"], color='orange', linestyle=':', alpha=0.8, label='Utilisation moyenne')
     
     ax1.set_xlabel('Station')
     ax1.set_ylabel('Utilisation (%)')
@@ -176,7 +177,7 @@ def generate_equilibrage_chart(results):
                 f'{util:.1f}%', ha='center', va='bottom', fontsize=9)
     
     # Graphique 2 : Charge de travail par station
-    loads = [s["load"] for s in results["stations"]]
+    loads = [s["load"] for s in results["station_assignments"]]
     
     bars2 = ax2.bar(stations, loads, 
                    color=colors[:len(stations)], 
