@@ -22,10 +22,9 @@ import ligne_assemblage_pl
 import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
 import ligne_transfert_buffer_buzzacott
-import fms_sac_a_dos
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
-from fms_sac_a_dos import fms_sac_a_dos, generate_fms_sac_a_dos_chart
+from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMSSacADosRequest
 from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
 
 app = FastAPI()
@@ -703,9 +702,9 @@ def run_buffer_buzzacott_chart(request: dict):
 def run_fms_sac_a_dos_analysis(request: dict):
     try:
         print(f"Received request: {request}")  # Debug
-        fms_request = fms_sac_a_dos.FMSSacADosRequest(**request)
+        fms_request = FMSSacADosRequest(**request)
         print("Request validation successful")  # Debug
-        result = fms_sac_a_dos.solve_fms_sac_a_dos(fms_request)
+        result = solve_fms_sac_a_dos(fms_request)
         print("Algorithm execution successful")  # Debug
         return result
     except Exception as e:
@@ -718,17 +717,17 @@ def run_fms_sac_a_dos_analysis(request: dict):
 def run_fms_sac_a_dos_chart(request: dict):
     try:
         print(f"Received chart request: {request}")
-        buffer = generate_fms_sac_a_dos_chart(
-            vente_unite=request["vente_unite"],
-            cout_mp_unite=request["cout_mp_unite"],
-            demande_periode=request["demande_periode"],
-            temps_fabrication_unite=request["temps_fabrication_unite"],
-            cout_op=request["cout_op"],
-            capacite_max=request["capacite_max"],
-            noms_produits=request["noms_produits"],
-            unite=request["unite"]
-        )
-        return StreamingResponse(buffer, media_type="image/png")
+        fms_request = FMSSacADosRequest(**request)
+        result = solve_fms_sac_a_dos(fms_request)
+        
+        # Générer le graphique
+        image_base64 = generate_fms_sac_a_dos_chart(result)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(image_base64)
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         print(f"Error in FMS chart: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
