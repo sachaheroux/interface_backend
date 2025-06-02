@@ -15,7 +15,6 @@ import jobshop_spt
 import jobshop_edd
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
-from jobshop_contraintes import planifier_jobshop_contraintes
 
 app = FastAPI()
 
@@ -320,39 +319,6 @@ def run_contraintes_gantt(request: ExtendedRequest):
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = contraintes.schedule(request.jobs_data, request.due_dates)
         fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)",
-                                  unite=request.unite,
-                                  job_names=request.job_names,
-                                  machine_names=request.machine_names)
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png")
-        plt.close(fig)
-        buf.seek(0)
-        return StreamingResponse(buf, media_type="image/png")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# ----------- Jobshop Contraintes -----------
-
-@app.post("/jobshop/contraintes")
-def run_jobshop_contraintes(request: JobshopSPTRequest):
-    try:
-        result = planifier_jobshop_contraintes(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/jobshop/contraintes/gantt")
-def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
-    try:
-        result = planifier_jobshop_contraintes(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
-        machines_dict = {}
-        for m, tasks in result["planification"].items():
-            m_idx = request.machine_names.index(m)
-            machines_dict.setdefault(m_idx, []).extend([
-                {"job": t.job, "start": t.start, "duration": t.duration} for t in tasks
-            ])
-        result_formatted = {"machines": machines_dict}
-        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop Contraintes",
                                   unite=request.unite,
                                   job_names=request.job_names,
                                   machine_names=request.machine_names)
