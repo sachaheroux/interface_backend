@@ -20,6 +20,7 @@ import ligne_assemblage_comsoal
 import ligne_assemblage_lpt
 import ligne_assemblage_pl
 import ligne_assemblage_mixte_goulot
+import ligne_assemblage_mixte_equilibrage
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
@@ -638,6 +639,30 @@ def run_goulot_chart(request: dict):
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(result["graphique"])
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/equilibrage")
+def run_equilibrage_analysis(request: dict):
+    try:
+        result = ligne_assemblage_mixte_equilibrage.solve_mixed_assembly_line(request)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/equilibrage/chart")
+def run_equilibrage_chart(request: dict):
+    try:
+        result = ligne_assemblage_mixte_equilibrage.solve_mixed_assembly_line(request)
+        
+        # Générer le graphique
+        image_base64 = ligne_assemblage_mixte_equilibrage.generate_equilibrage_chart(result)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(image_base64)
         buf = io.BytesIO(image_data)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
