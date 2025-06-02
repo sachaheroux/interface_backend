@@ -19,6 +19,7 @@ import ligne_assemblage_precedence
 import ligne_assemblage_comsoal
 import ligne_assemblage_lpt
 import ligne_assemblage_pl
+import ligne_assemblage_mixte_goulot
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 
@@ -601,6 +602,39 @@ def run_pl_chart(request: dict):
             task_tuples.append((task_id, predecessors, duration))
         
         result = ligne_assemblage_pl.pl_algorithm(task_tuples, cycle_time, unite)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(result["graphique"])
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/goulot")
+def run_goulot_analysis(request: dict):
+    try:
+        models_demand = request.get("models_demand", [4, 6])
+        task_times = request.get("task_times", [[3, 3], [2, 3]])
+        s1 = request.get("s1", 0.5)
+        s2 = request.get("s2", 0.5)
+        unite = request.get("unite", "minutes")
+        
+        result = ligne_assemblage_mixte_goulot.variation_goulot_algorithm(models_demand, task_times, s1, s2, unite)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/goulot/chart")
+def run_goulot_chart(request: dict):
+    try:
+        models_demand = request.get("models_demand", [4, 6])
+        task_times = request.get("task_times", [[3, 3], [2, 3]])
+        s1 = request.get("s1", 0.5)
+        s2 = request.get("s2", 0.5)
+        unite = request.get("unite", "minutes")
+        
+        result = ligne_assemblage_mixte_goulot.variation_goulot_algorithm(models_demand, task_times, s1, s2, unite)
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(result["graphique"])
