@@ -74,14 +74,14 @@ def solve_fms_sac_a_dos(request: FMSSacADosRequest):
         for idx in produits_selectionnes_idx:
             produits_details.append({
                 "nom": noms_produits[idx],
-                "index": idx + 1,
-                "profit_unitaire": round(profits_unitaires[idx], 2),
-                "profit_total": round(s[idx], 2),
-                "temps_requis": p[idx],
-                "demande": demande_periode[idx],
-                "prix_vente": vente_unite[idx],
-                "cout_mp": cout_mp_unite[idx],
-                "temps_fabrication": temps_fabrication_unite[idx]
+                "index": int(idx + 1),
+                "profit_unitaire": round(float(profits_unitaires[idx]), 2),
+                "profit_total": round(float(s[idx]), 2),
+                "temps_requis": int(p[idx]),
+                "demande": int(demande_periode[idx]),
+                "prix_vente": float(vente_unite[idx]),
+                "cout_mp": float(cout_mp_unite[idx]),
+                "temps_fabrication": float(temps_fabrication_unite[idx])
             })
         
         # Produits non sélectionnés
@@ -90,26 +90,26 @@ def solve_fms_sac_a_dos(request: FMSSacADosRequest):
             if idx not in produits_selectionnes_idx:
                 produits_non_selectionnes.append({
                     "nom": noms_produits[idx],
-                    "index": idx + 1,
-                    "profit_unitaire": round(profits_unitaires[idx], 2),
-                    "profit_total": round(s[idx], 2),
-                    "temps_requis": p[idx],
-                    "demande": demande_periode[idx],
+                    "index": int(idx + 1),
+                    "profit_unitaire": round(float(profits_unitaires[idx]), 2),
+                    "profit_total": round(float(s[idx]), 2),
+                    "temps_requis": int(p[idx]),
+                    "demande": int(demande_periode[idx]),
                     "raison_exclusion": "Capacité insuffisante ou profit faible"
                 })
         
         return {
             "status": "Optimal",
-            "profit_maximal": round(profit_maximal, 2),
-            "capacite_utilisee": capacite_utilisee,
-            "capacite_totale": capacite_max,
-            "utilisation_capacite": round(utilisation_capacite, 1),
+            "profit_maximal": float(profit_maximal),
+            "capacite_utilisee": int(capacite_utilisee),
+            "capacite_totale": int(capacite_max),
+            "utilisation_capacite": round(float(utilisation_capacite), 1),
             "nombre_produits_selectionnes": len(produits_selectionnes_idx),
             "produits_selectionnes": produits_details,
             "produits_non_selectionnes": produits_non_selectionnes,
-            "cout_operation_horaire": cout_op,
+            "cout_operation_horaire": float(cout_op),
             "unite": request.unite,
-            "efficacite": round((profit_maximal / (capacite_max * cout_op)) * 100, 1) if capacite_max > 0 else 0
+            "efficacite": round((float(profit_maximal) / (capacite_max * cout_op)) * 100, 1) if capacite_max > 0 else 0
         }
         
     except Exception as e:

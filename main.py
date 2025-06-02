@@ -700,11 +700,17 @@ def run_buffer_buzzacott_chart(request: dict):
 @app.post("/fms/sac_a_dos")
 def run_fms_sac_a_dos_analysis(request: dict):
     try:
+        print(f"Received request: {request}")  # Debug
         fms_request = fms_sac_a_dos.FMSSacADosRequest(**request)
+        print("Request validation successful")  # Debug
         result = fms_sac_a_dos.solve_fms_sac_a_dos(fms_request)
+        print("Algorithm execution successful")  # Debug
         return result
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Error in FMS endpoint: {str(e)}")  # Debug
+        import traceback
+        traceback.print_exc()  # Debug
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fms/sac_a_dos/chart")
 def run_fms_sac_a_dos_chart(request: dict):
@@ -721,7 +727,7 @@ def run_fms_sac_a_dos_chart(request: dict):
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
