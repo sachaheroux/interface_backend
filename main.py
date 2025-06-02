@@ -26,6 +26,7 @@ from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, John
 from agenda_utils import generer_agenda_json
 from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMSSacADosRequest
 from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
+from fms_sac_a_dos_glouton import solve_fms_sac_a_dos_glouton, generate_fms_sac_a_dos_glouton_chart, FMSSacADosGloutonRequest
 
 app = FastAPI()
 
@@ -773,6 +774,42 @@ def run_fms_sac_a_dos_pl_chart(request: dict):
         return StreamingResponse(buffer, media_type="image/png")
     except Exception as e:
         print(f"Error in FMS PL chart: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------- FMS Sac à Dos Glouton -----------
+
+@app.post("/fms/sac_a_dos_glouton")
+def run_fms_sac_a_dos_glouton_analysis(request: dict):
+    try:
+        print(f"Received glouton request: {request}")
+        fms_request = FMSSacADosGloutonRequest(**request)
+        print("Glouton request validation successful")
+        result = solve_fms_sac_a_dos_glouton(fms_request)
+        print("Glouton algorithm execution successful")
+        return result
+    except Exception as e:
+        print(f"Error in FMS glouton endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fms/sac_a_dos_glouton/chart")
+def run_fms_sac_a_dos_glouton_chart(request: dict):
+    try:
+        print(f"Received glouton chart request: {request}")
+        fms_request = FMSSacADosGloutonRequest(**request)
+        result = solve_fms_sac_a_dos_glouton(fms_request)
+        
+        # Générer le graphique
+        image_base64 = generate_fms_sac_a_dos_glouton_chart(result)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(image_base64)
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        print(f"Error in FMS glouton chart: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
