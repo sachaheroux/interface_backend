@@ -71,13 +71,22 @@ def create_precedence_diagram(task_tuples: List[tuple], unite: str = "minutes") 
     # Générer le graphique
     image_base64 = generate_precedence_chart(G, node_labels, root_node)
     
+    # Calculer le chemin critique et sa durée
+    critical_path = find_critical_path(G, task_durations)
+    critical_duration = sum(task_durations.get(task, 0) for task in critical_path)
+    
     return {
         "graphique": image_base64,
         "metrics": metrics,
         "nombre_taches": len(task_tuples),
         "nombre_relations": G.number_of_edges(),
-        "taches_critiques": find_critical_path(G, task_durations),
-        "unite": unite
+        "taches_critiques": critical_path,
+        "unite": unite,
+        # Champs attendus par le frontend
+        "temps_total_minimal": critical_duration,
+        "chemin_critique": critical_path,
+        "niveau_parallelisme_max": 1,
+        "taches_details": []
     }
 
 def calculate_metrics(G: nx.DiGraph, task_durations: Dict, unite: str) -> Dict:
