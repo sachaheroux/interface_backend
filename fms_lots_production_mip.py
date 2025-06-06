@@ -12,7 +12,7 @@ class FMSLotsProductionMIPRequest(BaseModel):
     noms_produits: List[str]
     grandeurs_commande: List[int]
     temps_operation_machines: List[List[float]]  # [produit][machine] en minutes
-    outils_machines: List[List[Optional[str]]]   # [produit][machine]
+    outils_machines: List[List[List[str]]]       # [produit][machine][outils] - Changed to support multiple tools
     dates_dues: List[int]
     couts_inventaire: List[float]               # Coût de maintien en inventaire par produit
     
@@ -84,14 +84,17 @@ def solve_fms_lots_production_mip(request: FMSLotsProductionMIPRequest) -> Dict[
             for t in range(T):
                 prob += lpSum(produits[i][1][j] * x[i][t] for i in range(len(produits))) <= temps_max[j]
         
-        # Contraintes de liaison outil-production
+        # Contraintes de liaison outil-production (supports multiple tools per product/machine)
         for i in range(len(produits)):
             for j in range(len(nb_machines)):
-                tool_required = produits[i][2][j]
-                if tool_required and tool_required in outils[j]:
-                    l = outils[j].index(tool_required)
-                    for t in range(T):
-                        prob += x[i][t] <= M * y[j][l][t]
+                tools_required = produits[i][2][j]  # Now a list of tools
+                if tools_required:  # If any tools are required
+                    # For each required tool, ensure at least one is active
+                    for tool_required in tools_required:
+                        if tool_required in outils[j]:
+                            l = outils[j].index(tool_required)
+                            for t in range(T):
+                                prob += x[i][t] <= M * y[j][l][t]
         
         # Contraintes de capacité outils
         for j in range(len(nb_machines)):
