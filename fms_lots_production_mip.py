@@ -142,29 +142,39 @@ def solve_fms_lots_production_mip(request: FMSLotsProductionMIPRequest) -> Dict[
             
             planification_periodes.append(periode)
         
-        # Calcul des métriques
+        # Calcul des métriques (corrected to reflect per-period capacity constraints)
         utilisation_machines = []
         temps_utilise_machines = []
         
         for j in range(len(nb_machines)):
-            temps_total_utilise = 0
+            # Calculate maximum utilization across all periods (not sum)
+            utilisation_max_periode = 0
+            temps_total_cumule = 0
+            
             for t in range(T):
+                temps_periode = 0
                 for i in range(len(produits)):
                     quantite = x[i][t].varValue if x[i][t].varValue else 0
-                    temps_total_utilise += produits[i][1][j] * quantite
+                    temps_periode += produits[i][1][j] * quantite
+                    temps_total_cumule += produits[i][1][j] * quantite
+                
+                # Check utilization for this period
+                utilisation_periode = (temps_periode / temps_max[j] * 100) if temps_max[j] > 0 else 0
+                utilisation_max_periode = max(utilisation_max_periode, utilisation_periode)
             
-            temps_utilise_machines.append(temps_total_utilise)
-            utilisation = (temps_total_utilise / temps_max[j] * 100) if temps_max[j] > 0 else 0
-            utilisation_machines.append(utilisation)
+            temps_utilise_machines.append(temps_total_cumule)
+            # Use the maximum period utilization (should never exceed 100% if constraints work)
+            utilisation_machines.append(utilisation_max_periode)
         
         # Résultats détaillés par machine
         resultats_machines = {}
         for j, nom_machine in enumerate(request.noms_machines):
             machine_key = nom_machine.lower().replace(' ', '_')
-            resultats_machines[f"temps_disponible_total_{machine_key}"] = round(temps_max[j], 2)
-            resultats_machines[f"temps_utilise_{machine_key}"] = round(temps_utilise_machines[j], 2)
-            resultats_machines[f"utilisation_{machine_key}"] = round(utilisation_machines[j], 1)
+            resultats_machines[f"temps_disponible_total_{machine_key}"] = round(temps_max[j] * T, 2)  # Total over all periods
+            resultats_machines[f"temps_utilise_{machine_key}"] = round(temps_utilise_machines[j], 2)  # Total over all periods
+            resultats_machines[f"utilisation_{machine_key}"] = round(utilisation_machines[j], 1)  # Max period utilization
             resultats_machines[f"nb_{machine_key}"] = request.nb_machines[j]
+            resultats_machines[f"temps_disponible_par_periode_{machine_key}"] = round(temps_max[j], 2)  # Per period capacity
         
         return {
             "status": status,
