@@ -197,8 +197,9 @@ def solve_fms_lots_production_mip(request: FMSLotsProductionMIPRequest) -> Dict[
             "planification_periodes": planification_periodes,
             "total_produits_par_periode": [round(x, 2) for x in total_produit_par_periode],
             
-            # Efficacité globale
-            "efficacite_globale": round(sum(utilisation_machines) / len(utilisation_machines), 1) if utilisation_machines else 0,
+            # Efficacité globale (vraie efficacité : temps total utilisé / temps total disponible)
+            "efficacite_globale": round((sum(temps_utilise_machines) / sum(temps_max[j] * T for j in range(len(nb_machines))) * 100), 1) if sum(temps_max[j] * T for j in range(len(nb_machines))) > 0 else 0,
+            "efficacite_pic_moyen": round(sum(utilisation_machines) / len(utilisation_machines), 1) if utilisation_machines else 0,  # Ancienne métrique pour comparaison
             
             # Résumé
             "nombre_periodes": T,
