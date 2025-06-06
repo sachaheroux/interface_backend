@@ -280,6 +280,7 @@ def generate_fms_lots_production_mip_chart(request: FMSLotsProductionMIPRequest)
             ax3.set_xlabel('Période')
             ax3.set_ylabel('Quantité produite')
             ax3.set_xticks(periodes)
+            ax3.set_xlim(0.5, max(periodes) + 0.5)  # Fix X-axis to start from proper range
             
             # Ajouter les valeurs sur les barres
             for bar, val in zip(bars, total_par_periode):
@@ -319,6 +320,10 @@ def generate_fms_lots_production_mip_chart(request: FMSLotsProductionMIPRequest)
                 ax4.set_xlabel('Période')
                 ax4.set_title('Planning Production par Période', fontweight='bold')
                 ax4.grid(axis='x', alpha=0.3)
+                # Set proper X-axis limits for the Gantt chart
+                max_periode = max([p['numero'] for p in planification])
+                ax4.set_xlim(0.5, max_periode + 0.5)
+                ax4.set_xticks(range(1, max_periode + 1))
             else:
                 ax4.text(0.5, 0.5, 'Aucune production', ha='center', va='center', 
                         transform=ax4.transAxes, fontsize=12)
