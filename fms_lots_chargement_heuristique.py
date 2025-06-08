@@ -41,26 +41,68 @@ def solve_fms_lots_chargement_heuristique(request: FMSLotsChargementHeuristiqueR
         # Étape 2: Création des clusters
         clusters = create_clusters(phase_1, Pj, Kj, tools)
         
+        # Validation des clusters - Vérifier si les opérations peuvent être clusterisées
+        for i, machine_clusters in enumerate(clusters):
+            total_time_needed = sum(cluster[1] for cluster in machine_clusters)
+            total_capacity = Pj[i] * mj[i]
+            if total_time_needed > total_capacity:
+                return {
+                    "status": "Infaisable",
+                    "methode": "Heuristique de chargement par lots",
+                    "message": f"Machine {request.noms_machines[i]}: Temps requis ({total_time_needed}) > Capacité totale ({total_capacity})",
+                    "machine_problematique": request.noms_machines[i],
+                    "temps_requis": total_time_needed,
+                    "capacite_totale": total_capacity,
+                    "nb_operations_total": sum(len(machine_ops) for machine_ops in phase_1),
+                    "clusters": [],
+                    "efficacite_globale": 0
+                }
+        
         # Étape 3: Formation des groupes
         g_j = create_groups(clusters, Kj, tools, mj)
         
         # Étape 4: Assignation des clusters aux groupes avec LPT
-        assignments = assign_clusters_to_groups_LPT(clusters, g_j, Pj, mj)
+        assignments, group_loads = assign_clusters_to_groups_LPT(clusters, g_j, Pj, mj)
+        
+        # Validation de l'assignation - Vérifier si les groupes respectent les capacités
+        for i, machine_loads in enumerate(group_loads):
+            group_capacity = Pj[i] * (mj[i] // g_j[i]) if g_j[i] > 0 else Pj[i]
+            for j, load in enumerate(machine_loads):
+                if load > group_capacity:
+                    return {
+                        "status": "Infaisable",
+                        "methode": "Heuristique de chargement par lots",
+                        "message": f"Machine {request.noms_machines[i]}, Groupe {j+1}: Charge ({load}) > Capacité groupe ({group_capacity})",
+                        "machine_problematique": request.noms_machines[i],
+                        "groupe_problematique": j+1,
+                        "charge_groupe": load,
+                        "capacite_groupe": group_capacity,
+                        "nb_operations_total": sum(len(machine_ops) for machine_ops in phase_1),
+                        "clusters": [],
+                        "efficacite_globale": 0
+                    }
         
         # Calcul des métriques
         total_operations = sum(len(machine_ops) for machine_ops in phase_1)
         total_clusters = sum(len(machine_clusters) for machine_clusters in clusters)
         total_groups = sum(g_j)
         
-        # Calcul des temps totaux par machine
-        temps_totaux_machines = []
+        # Calcul correct des utilisations par machine (utilisation réelle maximum par groupe)
         utilisation_machines = []
+        temps_totaux_machines = []
         
-        for i, machine_clusters in enumerate(clusters):
-            temps_total = sum(cluster[1] for cluster in machine_clusters)
+        for i, machine_loads in enumerate(group_loads):
+            temps_total = sum(cluster[1] for cluster in clusters[i])
             temps_totaux_machines.append(temps_total)
-            capacite_totale = Pj[i] * mj[i]
-            utilisation = (temps_total / capacite_totale * 100) if capacite_totale > 0 else 0
+            
+            if g_j[i] > 0:
+                group_capacity = Pj[i] * (mj[i] // g_j[i])
+                # Utilisation = charge maximum d'un groupe / capacité d'un groupe
+                max_group_load = max(machine_loads) if machine_loads else 0
+                utilisation = (max_group_load / group_capacity * 100) if group_capacity > 0 else 0
+            else:
+                utilisation = 0
+            
             utilisation_machines.append(utilisation)
         
         # Préparation des résultats détaillés
@@ -73,6 +115,8 @@ def solve_fms_lots_chargement_heuristique(request: FMSLotsChargementHeuristiqueR
             resultats_machines[f"temps_total_{machine_key}"] = temps_totaux_machines[i]
             resultats_machines[f"capacite_totale_{machine_key}"] = Pj[i] * mj[i]
             resultats_machines[f"utilisation_{machine_key}"] = round(utilisation_machines[i], 1)
+            resultats_machines[f"capacite_groupe_{machine_key}"] = Pj[i] * (mj[i] // g_j[i]) if g_j[i] > 0 else Pj[i]
+            resultats_machines[f"charge_max_groupe_{machine_key}"] = round(max(group_loads[i]) if group_loads[i] else 0, 1)
         
         return {
             "status": "Optimal",
@@ -97,13 +141,16 @@ def solve_fms_lots_chargement_heuristique(request: FMSLotsChargementHeuristiqueR
             "groupes": format_groups_for_output(g_j, mj, request.noms_machines),
             "assignations": format_assignments_for_output(assignments, request.noms_machines),
             
-            # Efficacité globale
+            # Efficacité globale (utilisation moyenne des groupes les plus chargés)
             "efficacite_globale": round(sum(utilisation_machines) / len(utilisation_machines), 1) if utilisation_machines else 0,
             
             # Résumé
             "nombre_machines_types": len(request.noms_machines),
             "nombre_operations": total_operations,
-            "nombre_clusters": total_clusters
+            "nombre_clusters": total_clusters,
+            
+            # Validation info
+            "validation": "Toutes les contraintes de capacité sont respectées"
         }
         
     except Exception as e:
@@ -112,7 +159,8 @@ def solve_fms_lots_chargement_heuristique(request: FMSLotsChargementHeuristiqueR
             "methode": "Heuristique de chargement par lots",
             "message": f"Erreur lors du calcul: {str(e)}",
             "clusters": [],
-            "nb_operations_total": 0
+            "nb_operations_total": 0,
+            "efficacite_globale": 0
         }
 
 def create_clusters(phase, Pj, Kj, tools):
@@ -178,13 +226,16 @@ def create_groups(clusters, Kj, tools, mj):
 def assign_clusters_to_groups_LPT(clusters, g_j, Pj, mj):
     """Étape 3: Assignation des clusters aux groupes avec LPT"""
     group_assignments = []
+    all_group_loads = []
     
     for i, machine_clusters in enumerate(clusters):
         # Trier les clusters selon LPT (Longest Processing Time first)
         machine_clusters = sorted(machine_clusters, key=lambda x: x[1], reverse=True)
         
         # Initialiser ψ (psi) pour chaque groupe - temps disponible
-        psi_values = [Pj[i] * (mj[i] // g_j[i]) for _ in range(g_j[i])]
+        group_capacity = Pj[i] * (mj[i] // g_j[i]) if g_j[i] > 0 else Pj[i]
+        psi_values = [group_capacity for _ in range(g_j[i])]
+        group_loads = [0 for _ in range(g_j[i])]
         
         current_group_assignments = [[] for _ in range(g_j[i])]
         
@@ -195,12 +246,14 @@ def assign_clusters_to_groups_LPT(clusters, g_j, Pj, mj):
             # Assigner le cluster à ce groupe
             current_group_assignments[max_psi_index].append(cluster[0])
             
-            # Mettre à jour le temps disponible pour ce groupe
+            # Mettre à jour le temps disponible et la charge pour ce groupe
             psi_values[max_psi_index] -= cluster[1]
+            group_loads[max_psi_index] += cluster[1]
         
         group_assignments.append(current_group_assignments)
+        all_group_loads.append(group_loads)
     
-    return group_assignments
+    return group_assignments, all_group_loads
 
 def format_clusters_for_output(clusters, noms_machines):
     """Formate les clusters pour l'affichage"""
@@ -298,27 +351,49 @@ def generate_fms_lots_chargement_heuristique_chart(request: FMSLotsChargementHeu
         ax1.legend()
         ax1.grid(axis='y', alpha=0.3)
         
-        # 2. Utilisation des machines
+        # 2. Utilisation des machines (pic par groupe)
         utilisation = []
+        charges_max = []
+        capacites_groupe = []
+        
         for nom_machine in noms_machines:
             machine_key = nom_machine.lower().replace(' ', '_')
             utilisation.append(result.get(f'utilisation_{machine_key}', 0))
+            charges_max.append(result.get(f'charge_max_groupe_{machine_key}', 0))
+            capacites_groupe.append(result.get(f'capacite_groupe_{machine_key}', 0))
         
-        colors = ['#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
-        bars = ax2.bar(noms_machines, utilisation, color=[colors[i % len(colors)] for i in range(len(noms_machines))], alpha=0.8)
-        ax2.set_title('Utilisation des Machines (%)', fontweight='bold')
-        ax2.set_ylabel('Pourcentage d\'utilisation')
-        ax2.set_ylim(0, 100)
+        # Codes couleur selon l'utilisation
+        colors = []
+        for util in utilisation:
+            if util > 100:
+                colors.append('#ef4444')  # Rouge pour surcharge
+            elif util > 90:
+                colors.append('#f59e0b')  # Orange pour proche limite
+            elif util > 75:
+                colors.append('#eab308')  # Jaune pour utilisation élevée
+            else:
+                colors.append('#10b981')  # Vert pour utilisation normale
+        
+        bars = ax2.bar(noms_machines, utilisation, color=colors, alpha=0.8)
+        ax2.set_title('Utilisation Pic par Groupe (%)', fontweight='bold')
+        ax2.set_ylabel('Pourcentage d\'utilisation maximum')
+        ax2.set_ylim(0, max(110, max(utilisation) + 10) if utilisation else 110)
+        
+        # Ligne de référence à 100%
+        ax2.axhline(y=100, color='red', linestyle='--', alpha=0.7, label='Limite capacité')
         
         # Ajouter les valeurs sur les barres
         for bar, util in zip(bars, utilisation):
             height = bar.get_height()
+            color = 'white' if util > 50 else 'black'
             ax2.text(bar.get_x() + bar.get_width()/2., height + 1,
                     f'{util:.1f}%',
-                    ha='center', va='bottom', fontsize=10)
+                    ha='center', va='bottom', fontsize=10, color=color, fontweight='bold')
         
         if len(noms_machines) > 3:
             ax2.tick_params(axis='x', rotation=45)
+        
+        ax2.legend()
         
         # 3. Temps de traitement par machine
         temps_totaux = []
