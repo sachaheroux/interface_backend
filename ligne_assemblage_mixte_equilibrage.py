@@ -53,7 +53,9 @@ def mixed_assembly_line_scheduling_heuristic(models, tasks_data, cycle_time):
         for task in tasks:
             if task not in assigned_tasks:
                 # Vérifier si tous les prédécesseurs sont assignés
-                if all(pred in assigned_tasks for pred in predecessors.get(task, [])):
+                # Filtrer les None et vérifier les prédécesseurs
+                task_predecessors = [p for p in predecessors.get(task, []) if p is not None]
+                if all(pred in assigned_tasks for pred in task_predecessors):
                     available.append(task)
         return available
 
@@ -163,19 +165,8 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
     # Extraction des tâches et construction du dictionnaire des prédécesseurs
     tasks = [task[0] for task in tasks_data]
     
-    # Construction du dictionnaire des prédécesseurs
-    predecessors = {}
-    for task in tasks_data:
-        task_id = task[0]
-        all_predecessors = []
-        for i in range(1, len(task)):
-            pred = task[i][0]
-            if pred is not None:
-                if isinstance(pred, list):
-                    all_predecessors.extend(pred)
-                else:
-                    all_predecessors.append(pred)
-        predecessors[task_id] = list(set([p for p in all_predecessors if p is not None]))
+    # Construction du dictionnaire des prédécesseurs (logique exacte du collègue)
+    predecessors = {task[0]: [pred for sublist in [task[i][0] for i in range(1, len(task))] for pred in (sublist if isinstance(sublist, list) else [sublist])] for task in tasks_data}
 
     # Calcul des temps de traitement pondérés par la demande de chaque modèle
     weighted_processing_times = {}
@@ -204,10 +195,10 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
         for j in stations:
             prob += lpSum([weighted_processing_times[i]*y[(i,j)] for i in tasks]) <= cycle_time, f"Cycle_time_constraint_{j}"
 
-        # 3. Contraintes de précédence (simplifiées)
+        # 3. Contraintes de précédence (logique exacte du collègue)
         counter = 1
         for i in tasks:
-            if predecessors[i]:
+            if predecessors[i][0] is not None:
                 for p in predecessors[i]:
                     prob += lpSum([j*y[(i,j)] for j in stations]) >= lpSum([j*y[(p,j)] for j in stations]), f"Precedence_constraint_{counter}"
                     counter += 1
