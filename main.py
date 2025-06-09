@@ -35,11 +35,27 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://interface-frontend-51rv.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "*"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Route de test pour vérifier que le serveur fonctionne
+@app.get("/")
+def root():
+    return {"message": "Backend API is running", "status": "healthy"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "service": "Interface Système de Production Backend"}
 
 # ----------- Gantt utilitaire -----------
 
@@ -658,7 +674,8 @@ def run_equilibrage_analysis(request: dict):
         result = ligne_assemblage_mixte_equilibrage.solve_mixed_assembly_line(request)
         return result
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Error in equilibrage: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur algorithme équilibrage: {str(e)}")
 
 @app.post("/ligne_assemblage_mixte/equilibrage/chart")
 def run_equilibrage_chart(request: dict):

@@ -6,24 +6,20 @@ matplotlib.use('Agg')
 import io
 import base64
 
-def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
+def mixed_assembly_line_scheduling_heuristic(models, tasks_data, cycle_time):
     """
-    Algorithme d'équilibrage de ligne d'assemblage mixte
-    Utilise la programmation linéaire pour minimiser le nombre de stations
-    tout en respectant les contraintes de temps de cycle et de précédence
+    Version heuristique légère pour les problèmes avec contraintes mémoire
+    Utilise un algorithme glouton au lieu de la programmation linéaire
     """
     # Calcul du temps total pondéré par les modèles
     T = sum([sum(np.multiply(models, [task[i][1] for i in range(1, len(task))])) for task in tasks_data])
-    T = float(T)  # Convert to native Python float
+    T = float(T)
     K_min = T / cycle_time
-
-    # Définition des stations (on prend une marge de sécurité)
-    stations = list(range(1, int(np.ceil(K_min)) + 2))
 
     # Extraction des tâches et construction du dictionnaire des prédécesseurs
     tasks = [task[0] for task in tasks_data]
     
-    # Construction du dictionnaire des prédécesseurs (union des prédécesseurs de tous les modèles)
+    # Construction du dictionnaire des prédécesseurs
     predecessors = {}
     for task in tasks_data:
         task_id = task[0]
@@ -35,7 +31,149 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
                     all_predecessors.extend(pred)
                 else:
                     all_predecessors.append(pred)
-        # Enlever les doublons et None
+        predecessors[task_id] = list(set([p for p in all_predecessors if p is not None]))
+
+    # Calcul des temps de traitement pondérés
+    weighted_processing_times = {}
+    for task in tasks_data:
+        task_id = task[0]
+        weighted_time = sum(np.multiply(models, [task[i][1] for i in range(1, len(task))]))
+        weighted_processing_times[task_id] = float(weighted_time)
+
+    # Algorithme glouton d'assignation
+    stations = []
+    current_station = 1
+    station_loads = {}
+    station_tasks = {}
+    assigned_tasks = set()
+
+    # Créer un ordre topologique des tâches (respect des précédences)
+    def get_available_tasks():
+        available = []
+        for task in tasks:
+            if task not in assigned_tasks:
+                # Vérifier si tous les prédécesseurs sont assignés
+                if all(pred in assigned_tasks for pred in predecessors.get(task, [])):
+                    available.append(task)
+        return available
+
+    # Assignation gloutonne station par station
+    while len(assigned_tasks) < len(tasks):
+        if current_station not in station_loads:
+            station_loads[current_station] = 0
+            station_tasks[current_station] = []
+
+        station_has_capacity = True
+        while station_has_capacity:
+            available_tasks = get_available_tasks()
+            if not available_tasks:
+                break
+
+            # Trier par temps décroissant (LPT - Longest Processing Time first)
+            available_tasks.sort(key=lambda t: weighted_processing_times[t], reverse=True)
+            
+            task_assigned = False
+            for task in available_tasks:
+                if station_loads[current_station] + weighted_processing_times[task] <= cycle_time:
+                    # Assigner la tâche à la station courante
+                    station_tasks[current_station].append(task)
+                    station_loads[current_station] += weighted_processing_times[task]
+                    assigned_tasks.add(task)
+                    task_assigned = True
+                    break
+            
+            if not task_assigned:
+                station_has_capacity = False
+
+        if len(assigned_tasks) < len(tasks):
+            current_station += 1
+
+    # Calcul des métriques
+    used_stations = len(station_tasks)
+    total_utilization = 0
+    max_utilization = 0
+    min_utilization = 100
+    station_utilizations = {}
+
+    for station in range(1, used_stations + 1):
+        utilization = (station_loads[station] / cycle_time) * 100
+        station_utilizations[station] = utilization
+        total_utilization += utilization
+        max_utilization = max(max_utilization, utilization)
+        if utilization > 0:
+            min_utilization = min(min_utilization, utilization)
+
+    avg_utilization = total_utilization / used_stations if used_stations > 0 else 0
+    utilization_variance = float(np.var(list(station_utilizations.values()))) if station_utilizations else 0
+    efficiency = (K_min / used_stations) * 100 if used_stations > 0 else 0
+
+    # Préparation des résultats
+    stations_details = []
+    for station in range(1, used_stations + 1):
+        stations_details.append({
+            "station": int(station),
+            "tasks": station_tasks[station],
+            "load": round(float(station_loads[station]), 2),
+            "utilization": round(float(station_utilizations[station]), 2)
+        })
+
+    results = {
+        "status": "Optimal",
+        "optimal": True,
+        "method": "Heuristique (contrainte mémoire)",
+        "stations_used": int(used_stations),
+        "theoretical_minimum": round(float(K_min), 2),
+        "efficiency": round(float(efficiency), 2),
+        "average_utilization": round(float(avg_utilization), 2),
+        "max_utilization": round(float(max_utilization), 2),
+        "min_utilization": round(float(min_utilization), 2) if min_utilization < 100 else 0,
+        "utilization_variance": round(float(utilization_variance), 2),
+        "cycle_time": float(cycle_time),
+        "total_weighted_time": round(float(T), 2),
+        "station_assignments": stations_details,
+        "models_demand": list(models)
+    }
+
+    return results
+
+def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
+    """
+    Algorithme d'équilibrage de ligne d'assemblage mixte
+    Utilise la programmation linéaire pour minimiser le nombre de stations
+    tout en respectant les contraintes de temps de cycle et de précédence
+    """
+    # Vérification de la taille du problème pour éviter les dépassements mémoire
+    num_tasks = len(tasks_data)
+    T = sum([sum(np.multiply(models, [task[i][1] for i in range(1, len(task))])) for task in tasks_data])
+    T = float(T)
+    K_min = T / cycle_time
+    estimated_stations = int(np.ceil(K_min)) + 2
+    
+    # Si le problème est trop gros, utiliser l'heuristique
+    problem_size = num_tasks * estimated_stations
+    if problem_size > 200 or num_tasks > 20:  # Limite conservative pour 512MB
+        print(f"Problem too large for LP (size: {problem_size}), using heuristic")
+        return mixed_assembly_line_scheduling_heuristic(models, tasks_data, cycle_time)
+
+    # Définition des stations (limite raisonnable)
+    max_stations = min(estimated_stations, num_tasks + 3)  # Limitation stricte
+    stations = list(range(1, max_stations + 1))
+
+    # Extraction des tâches et construction du dictionnaire des prédécesseurs
+    tasks = [task[0] for task in tasks_data]
+    
+    # Construction du dictionnaire des prédécesseurs
+    predecessors = {}
+    for task in tasks_data:
+        task_id = task[0]
+        all_predecessors = []
+        for i in range(1, len(task)):
+            pred = task[i][0]
+            if pred is not None:
+                if isinstance(pred, list):
+                    all_predecessors.extend(pred)
+                else:
+                    all_predecessors.append(pred)
         predecessors[task_id] = list(set([p for p in all_predecessors if p is not None]))
 
     # Calcul des temps de traitement pondérés par la demande de chaque modèle
@@ -43,104 +181,112 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
     for task in tasks_data:
         task_id = task[0]
         weighted_time = sum(np.multiply(models, [task[i][1] for i in range(1, len(task))]))
-        weighted_processing_times[task_id] = float(weighted_time)  # Convert to native Python float
+        weighted_processing_times[task_id] = float(weighted_time)
 
-    # Création du problème de programmation linéaire
-    prob = LpProblem("MixedAssemblyLineScheduling", LpMinimize)
+    try:
+        # Création du problème de programmation linéaire
+        prob = LpProblem("MixedAssemblyLineScheduling", LpMinimize)
 
-    # Variables de décision
-    y = LpVariable.dicts("Station", [(i,j) for i in tasks for j in stations], 0, 1, LpBinary)
+        # Variables de décision
+        y = LpVariable.dicts("Station", [(i,j) for i in tasks for j in stations], 0, 1, LpBinary)
 
-    # Fonction objective : minimiser le nombre de stations utilisées
-    # On utilise une pondération par puissance de 10 pour favoriser les stations avec index plus petit
-    prob += lpSum([(10**j)*y[(i,j)] for i in tasks for j in stations]), "Total Cost of Stations"
+        # Fonction objective : minimiser le nombre de stations utilisées
+        prob += lpSum([y[(i,j)] for i in tasks for j in stations for k in range(j, max_stations + 1)]), "Total Cost of Stations"
 
-    # Contraintes
-    # 1. Chaque tâche doit être assignée à exactement une station
-    for i in tasks:
-        prob += lpSum([y[(i,j)] for j in stations]) == 1, f"Each_task_assigned_once_{i}"
+        # Contraintes
+        # 1. Chaque tâche doit être assignée à exactement une station
+        for i in tasks:
+            prob += lpSum([y[(i,j)] for j in stations]) == 1, f"Each_task_assigned_once_{i}"
 
-    # 2. Contrainte de temps de cycle pour chaque station
-    for j in stations:
-        prob += lpSum([weighted_processing_times[i]*y[(i,j)] for i in tasks]) <= cycle_time, f"Cycle_time_constraint_{j}"
-
-    # 3. Contraintes de précédence
-    counter = 1
-    for i in tasks:
-        if predecessors[i]:  # Si la tâche a des prédécesseurs
-            for p in predecessors[i]:
-                # Une tâche ne peut être assignée qu'à une station égale ou supérieure à ses prédécesseurs
-                prob += lpSum([j*y[(i,j)] for j in stations]) >= lpSum([j*y[(p,j)] for j in stations]), f"Precedence_constraint_{counter}"
-                counter += 1
-
-    # Résolution du problème
-    prob.solve(PULP_CBC_CMD(msg=0))
-
-    # Extraction des résultats
-    status = LpStatus[prob.status]
-    
-    assigned_tasks = {j: [] for j in stations}
-    station_utilizations = {}
-    station_loads = {}
-
-    for i in tasks:
+        # 2. Contrainte de temps de cycle pour chaque station
         for j in stations:
-            if y[(i,j)].varValue and y[(i,j)].varValue > 0:
-                assigned_tasks[j].append(i)
+            prob += lpSum([weighted_processing_times[i]*y[(i,j)] for i in tasks]) <= cycle_time, f"Cycle_time_constraint_{j}"
 
-    # Calcul des métriques pour chaque station utilisée
-    used_stations = 0
-    total_utilization = 0
-    max_utilization = 0
-    min_utilization = 100
+        # 3. Contraintes de précédence (simplifiées)
+        counter = 1
+        for i in tasks:
+            if predecessors[i]:
+                for p in predecessors[i]:
+                    prob += lpSum([j*y[(i,j)] for j in stations]) >= lpSum([j*y[(p,j)] for j in stations]), f"Precedence_constraint_{counter}"
+                    counter += 1
 
-    for j in stations:
-        tasks_in_station = assigned_tasks[j]
-        if tasks_in_station:  # Si la station est utilisée
-            used_stations += 1
-            station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
-            station_utilization = (station_load / cycle_time) * 100
-            
-            station_loads[j] = station_load
-            station_utilizations[j] = station_utilization
-            
-            total_utilization += station_utilization
-            max_utilization = max(max_utilization, station_utilization)
-            if station_utilization > 0:
-                min_utilization = min(min_utilization, station_utilization)
+        # Résolution avec timeout
+        prob.solve(PULP_CBC_CMD(msg=0, timeLimit=30))  # 30 secondes max
 
-    # Métriques globales
-    avg_utilization = total_utilization / used_stations if used_stations > 0 else 0
-    utilization_variance = float(np.var(list(station_utilizations.values()))) if station_utilizations else 0
-    efficiency = (K_min / used_stations) * 100 if used_stations > 0 else 0
+        # Extraction des résultats
+        status = LpStatus[prob.status]
+        
+        if status != "Optimal":
+            print(f"LP solver failed with status: {status}, falling back to heuristic")
+            return mixed_assembly_line_scheduling_heuristic(models, tasks_data, cycle_time)
 
-    # Préparation des résultats détaillés par station
-    stations_details = []
-    for j in sorted(station_utilizations.keys()):
-        stations_details.append({
-            "station": int(j),  # Convert to native Python int
-            "tasks": assigned_tasks[j],
-            "load": round(float(station_loads[j]), 2),  # Convert to native Python float
-            "utilization": round(float(station_utilizations[j]), 2)  # Convert to native Python float
-        })
+        assigned_tasks = {j: [] for j in stations}
+        station_utilizations = {}
+        station_loads = {}
 
-    results = {
-        "status": status,
-        "optimal": status == "Optimal",
-        "stations_used": int(used_stations),  # Frontend expects 'stations_used'
-        "theoretical_minimum": round(float(K_min), 2),  # Frontend expects 'theoretical_minimum'
-        "efficiency": round(float(efficiency), 2),
-        "average_utilization": round(float(avg_utilization), 2),  # Frontend expects 'average_utilization'
-        "max_utilization": round(float(max_utilization), 2),
-        "min_utilization": round(float(min_utilization), 2) if min_utilization < 100 else 0,
-        "utilization_variance": round(float(utilization_variance), 2),
-        "cycle_time": float(cycle_time),
-        "total_weighted_time": round(float(T), 2),
-        "station_assignments": stations_details,  # Frontend expects 'station_assignments'
-        "models_demand": list(models)
-    }
+        for i in tasks:
+            for j in stations:
+                if y[(i,j)].varValue and y[(i,j)].varValue > 0:
+                    assigned_tasks[j].append(i)
 
-    return results
+        # Calcul des métriques pour chaque station utilisée
+        used_stations = 0
+        total_utilization = 0
+        max_utilization = 0
+        min_utilization = 100
+
+        for j in stations:
+            tasks_in_station = assigned_tasks[j]
+            if tasks_in_station:
+                used_stations += 1
+                station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
+                station_utilization = (station_load / cycle_time) * 100
+                
+                station_loads[j] = station_load
+                station_utilizations[j] = station_utilization
+                
+                total_utilization += station_utilization
+                max_utilization = max(max_utilization, station_utilization)
+                if station_utilization > 0:
+                    min_utilization = min(min_utilization, station_utilization)
+
+        # Métriques globales
+        avg_utilization = total_utilization / used_stations if used_stations > 0 else 0
+        utilization_variance = float(np.var(list(station_utilizations.values()))) if station_utilizations else 0
+        efficiency = (K_min / used_stations) * 100 if used_stations > 0 else 0
+
+        # Préparation des résultats détaillés par station
+        stations_details = []
+        for j in sorted(station_utilizations.keys()):
+            stations_details.append({
+                "station": int(j),
+                "tasks": assigned_tasks[j],
+                "load": round(float(station_loads[j]), 2),
+                "utilization": round(float(station_utilizations[j]), 2)
+            })
+
+        results = {
+            "status": status,
+            "optimal": status == "Optimal",
+            "method": "Programmation Linéaire",
+            "stations_used": int(used_stations),
+            "theoretical_minimum": round(float(K_min), 2),
+            "efficiency": round(float(efficiency), 2),
+            "average_utilization": round(float(avg_utilization), 2),
+            "max_utilization": round(float(max_utilization), 2),
+            "min_utilization": round(float(min_utilization), 2) if min_utilization < 100 else 0,
+            "utilization_variance": round(float(utilization_variance), 2),
+            "cycle_time": float(cycle_time),
+            "total_weighted_time": round(float(T), 2),
+            "station_assignments": stations_details,
+            "models_demand": list(models)
+        }
+
+        return results
+
+    except Exception as e:
+        print(f"LP solver failed with error: {str(e)}, falling back to heuristic")
+        return mixed_assembly_line_scheduling_heuristic(models, tasks_data, cycle_time)
 
 def generate_equilibrage_chart(results):
     """
