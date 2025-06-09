@@ -28,7 +28,7 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
 
     items = []
 
-    # Fonction pour trouver le prochain créneau disponible
+    # Fonction pour trouver le prochain créneau disponible (évite pauses et heures fermeture)
     def find_next_available_slot(current_dt, duration_minutes):
         while True:
             current_day = current_dt.date()
@@ -47,7 +47,24 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                 # CORRECTION CRITIQUE : Vérifier que la tâche FINIT avant la fermeture
                 task_end_time = current_dt + timedelta(minutes=duration_minutes)
                 if task_end_time <= day_end:
-                    return current_dt
+                    # Vérifier les conflits avec les pauses
+                    has_pause_conflict = False
+                    for pause in pauses:
+                        start_time_obj = datetime.strptime(pause["start"], "%H:%M").time()
+                        end_time_obj = datetime.strptime(pause["end"], "%H:%M").time()
+                        pause_start = current_dt.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
+                        pause_end = current_dt.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
+                        
+                        if current_dt < pause_end and task_end_time > pause_start:
+                            # Conflit détecté, décaler après cette pause
+                            current_dt = pause_end
+                            has_pause_conflict = True
+                            break
+                    
+                    if not has_pause_conflict:
+                        return current_dt
+                    # Si conflit, recommencer la boucle avec la nouvelle heure
+                    continue
             
             # Passer au jour suivant à l'heure d'ouverture
             current_dt = (current_dt + timedelta(days=1)).replace(hour=open_hour, minute=open_min, second=0, microsecond=0)
@@ -76,6 +93,12 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
     for machine_id_str in result["machines"].keys():
         machine_current_time[int(machine_id_str)] = base_datetime
     
+    # CORRECTION : Gérer les pauses une seule fois, avant la boucle
+    if not pauses:
+        pauses = [{"start": "12:00", "end": "13:00", "name": "Pause déjeuner"}]
+    
+    print(f"🔍 PAUSES UTILISÉES DANS AGENDA: {pauses}")
+    
     items = []
     
     for task_info in all_tasks:
@@ -94,88 +117,21 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
         
         start_time = max(machine_available_time, job_available_time)
             
-        # Trouver le prochain créneau disponible
+        # Trouver le prochain créneau disponible (évite automatiquement les pauses)
         actual_start = find_next_available_slot(start_time, duration_minutes)
         actual_end = actual_start + timedelta(minutes=duration_minutes)
         
-        # Gérer toutes les pauses configurées
-        if not pauses:
-            pauses = [{"start": "12:00", "end": "13:00", "name": "Pause déjeuner"}]
-        
-        # Vérifier les conflits avec toutes les pauses
-        pause_conflicts = []
-        for pause in pauses:
-            start_time_obj = datetime.strptime(pause["start"], "%H:%M").time()
-            end_time_obj = datetime.strptime(pause["end"], "%H:%M").time()
-            pause_start = actual_start.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
-            pause_end = actual_start.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
-            
-            if actual_start < pause_end and actual_end > pause_start:
-                pause_conflicts.append((pause_start, pause_end, pause["name"]))
-        
-        # Gérer les conflits avec les pauses
-        if pause_conflicts:
-            # Pour simplifier, on gère le premier conflit trouvé
-            pause_start, pause_end, pause_name = pause_conflicts[0]
-            if actual_start < pause_start:
-                # Diviser la tâche avant et après la pause
-                first_part_end = pause_start
-                first_part_duration = int((first_part_end - actual_start).total_seconds() / 60)
-                second_part_start = pause_end
-                second_part_duration = duration_minutes - first_part_duration
-                
-                if first_part_duration > 0:
-                    job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
-                    items.append({
-                        "id": f"{machine_id}_{job_id}_{task_info['task_id']}_part1",
-                        "group": machine_id,
-                        "title": f"{job_label} (1/2)",
-                        "start_time": actual_start.isoformat(),
-                        "end_time": first_part_end.isoformat(),
-                        "job_info": task_info,
-                        "task_type": "production"
-                    })
-                
-                if second_part_duration > 0:
-                    # Retrouver le bon créneau pour la deuxième partie
-                    actual_start = find_next_available_slot(second_part_start, second_part_duration)
-                    actual_end = actual_start + timedelta(minutes=second_part_duration)
-                    job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
-                    items.append({
-                        "id": f"{machine_id}_{job_id}_{task_info['task_id']}_part2",
-                        "group": machine_id,
-                        "title": f"{job_label} (2/2)",
-                        "start_time": actual_start.isoformat(),
-                        "end_time": actual_end.isoformat(),
-                        "job_info": task_info,
-                        "task_type": "production"
-                    })
-            else:
-                # Décaler toute la tâche après la pause en respectant les heures d'ouverture
-                actual_start = find_next_available_slot(pause_end, duration_minutes)
-                actual_end = actual_start + timedelta(minutes=duration_minutes)
-                job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
-                items.append({
-                    "id": f"{machine_id}_{job_id}_{task_info['task_id']}",
-                    "group": machine_id,
-                    "title": job_label,
-                    "start_time": actual_start.isoformat(),
-                    "end_time": actual_end.isoformat(),
-                    "job_info": task_info,
-                    "task_type": "production"
-                })
-        else:
-            # Pas de conflit avec la pause déjeuner
-            job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
-            items.append({
-                "id": f"{machine_id}_{job_id}_{task_info['task_id']}",
-                "group": machine_id,
-                "title": job_label,
-                "start_time": actual_start.isoformat(),
-                "end_time": actual_end.isoformat(),
-                "job_info": task_info,
-                "task_type": "production"
-            })
+        # Créer la tâche (les pauses sont automatiquement évitées)
+        job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
+        items.append({
+            "id": f"{machine_id}_{job_id}_{task_info['task_id']}",
+            "group": machine_id,
+            "title": job_label,
+            "start_time": actual_start.isoformat(),
+            "end_time": actual_end.isoformat(),
+            "job_info": task_info,
+            "task_type": "production"
+        })
         
         # Mettre à jour le temps de la machine ET du job (contrainte Flowshop)
         machine_current_time[machine_id] = actual_end
@@ -185,10 +141,17 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
         "groups": groups,
         "items": items,
         "opening_hours": opening_hours,
+        "pauses": pauses,
         "total_machines": len(groups),
         "planning_period": {
             "start": base_datetime.isoformat(),
             "estimated_end": max(machine_current_time.values()).isoformat() if machine_current_time else base_datetime.isoformat()
+        },
+        "agenda_config": {
+            "opening_hours": opening_hours,
+            "weekend_days": weekend_days,
+            "jours_feries": jours_feries,
+            "pauses": pauses
         }
     }
 

@@ -394,6 +394,9 @@ def run_contraintes_agenda(request: ExtendedRequest):
         due_date_times = getattr(request, 'due_date_times', None) or []
         pauses = getattr(request, 'pauses', None) or [{"start": "12:00", "end": "13:00", "name": "Pause déjeuner"}]
         
+        # Debug : vérifier les pauses reçues
+        print(f"🔍 PAUSES REÇUES: {pauses}")
+        
         agenda_data = generer_agenda_json(
             result, 
             start_datetime, 
