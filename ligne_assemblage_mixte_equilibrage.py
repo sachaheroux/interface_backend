@@ -191,8 +191,9 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
         # Variables de décision
         y = LpVariable.dicts("Station", [(i,j) for i in tasks for j in stations], 0, 1, LpBinary)
 
-        # Fonction objective : minimiser le nombre de stations utilisées
-        prob += lpSum([y[(i,j)] for i in tasks for j in stations for k in range(j, max_stations + 1)]), "Total Cost of Stations"
+        # Fonction objective : minimiser le nombre de stations en favorisant les stations à indices faibles
+        # Cette formulation favorise l'utilisation séquentielle des stations (0, 1, 2, etc.)
+        prob += lpSum([(10**j) * y[(i,j)] for i in tasks for j in stations]), "MinimizeStationsSequentially"
 
         # Contraintes
         # 1. Chaque tâche doit être assignée à exactement une station
