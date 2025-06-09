@@ -195,11 +195,23 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
         for j in stations:
             prob += lpSum([weighted_processing_times[i]*y[(i,j)] for i in tasks]) <= cycle_time, f"Cycle_time_constraint_{j}"
 
-        # 3. Contraintes de précédence (logique exacte du collègue)
+        # 3. Contraintes de précédence (corrigées pour tous les produits)
         counter = 1
         for i in tasks:
-            if predecessors[i][0] is not None:
-                for p in predecessors[i]:
+            # Vérifier s'il y a des précédences dans N'IMPORTE QUEL produit
+            has_precedence = any(pred is not None for pred in predecessors[i])
+            if has_precedence:
+                # Collecter tous les prédécesseurs non-None de tous les produits
+                all_predecessors = set()
+                for pred in predecessors[i]:
+                    if pred is not None:
+                        if isinstance(pred, list):
+                            all_predecessors.update(pred)
+                        else:
+                            all_predecessors.add(pred)
+                
+                # Ajouter une contrainte pour chaque prédécesseur unique
+                for p in all_predecessors:
                     prob += lpSum([j*y[(i,j)] for j in stations]) >= lpSum([j*y[(p,j)] for j in stations]), f"Precedence_constraint_{counter}"
                     counter += 1
 
