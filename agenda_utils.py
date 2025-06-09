@@ -52,28 +52,101 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
             # Passer au jour suivant à l'heure d'ouverture
             current_dt = (current_dt + timedelta(days=1)).replace(hour=open_hour, minute=open_min, second=0, microsecond=0)
 
-    # Fonction pour éviter les pauses (simple et sûre)
-    def avoid_pauses(start_dt, duration_minutes, configured_pauses):
-        end_dt = start_dt + timedelta(minutes=duration_minutes)
+    # Fonction pour gérer les pauses intelligemment (avec division si nécessaire)
+    def handle_pauses(start_dt, duration_minutes, configured_pauses, machine_id, job_id, task_info, job_names):
+        current_items = []
+        remaining_duration = duration_minutes
+        current_start = start_dt
+        part_counter = 1
         
-        for pause in configured_pauses:
-            try:
-                start_time_obj = datetime.strptime(pause["start"], "%H:%M").time()
-                end_time_obj = datetime.strptime(pause["end"], "%H:%M").time()
-                pause_start = start_dt.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
-                pause_end = start_dt.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
+        max_iterations = 10  # Sécurité contre les boucles infinies
+        iteration_count = 0
+        
+        while remaining_duration > 0 and iteration_count < max_iterations:
+            iteration_count += 1
+            current_end = current_start + timedelta(minutes=remaining_duration)
+            
+            # Chercher la première pause qui interfère
+            conflicting_pause = None
+            earliest_pause_start = None
+            
+            for pause in configured_pauses:
+                try:
+                    start_time_obj = datetime.strptime(pause["start"], "%H:%M").time()
+                    end_time_obj = datetime.strptime(pause["end"], "%H:%M").time()
+                    pause_start = current_start.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
+                    pause_end = current_start.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
+                    
+                    # Si la tâche chevauche avec cette pause
+                    if current_start < pause_end and current_end > pause_start:
+                        if earliest_pause_start is None or pause_start < earliest_pause_start:
+                            conflicting_pause = pause
+                            earliest_pause_start = pause_start
+                except Exception:
+                    continue
+            
+            if conflicting_pause is None:
+                # Aucune pause ne gêne, créer la tâche complète
+                job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
+                suffix = f" ({part_counter}/{part_counter})" if part_counter > 1 else ""
                 
-                # Si la tâche chevauche avec la pause
-                if start_dt < pause_end and end_dt > pause_start:
-                    # Décaler la tâche après la pause
-                    new_start = pause_end
-                    # Trouver un nouveau créneau valide après la pause
-                    return find_next_available_slot(new_start, duration_minutes)
-            except Exception as e:
-                print(f"Erreur lors du traitement de la pause {pause}: {e}")
-                continue
+                current_items.append({
+                    "id": f"{machine_id}_{job_id}_{task_info['task_id']}_part{part_counter}",
+                    "group": machine_id,
+                    "title": f"{job_label}{suffix}",
+                    "start_time": current_start.isoformat(),
+                    "end_time": current_end.isoformat(),
+                    "job_info": task_info,
+                    "task_type": "production"
+                })
+                break
+            else:
+                # Une pause interfère, diviser la tâche
+                start_time_obj = datetime.strptime(conflicting_pause["start"], "%H:%M").time()
+                end_time_obj = datetime.strptime(conflicting_pause["end"], "%H:%M").time()
+                pause_start = current_start.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
+                pause_end = current_start.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
+                
+                if current_start < pause_start:
+                    # Créer une partie avant la pause
+                    part_end = pause_start
+                    part_duration = int((part_end - current_start).total_seconds() / 60)
+                    
+                    if part_duration > 0:
+                        job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
+                        
+                        current_items.append({
+                            "id": f"{machine_id}_{job_id}_{task_info['task_id']}_part{part_counter}",
+                            "group": machine_id,
+                            "title": f"{job_label} (partie {part_counter})",
+                            "start_time": current_start.isoformat(),
+                            "end_time": part_end.isoformat(),
+                            "job_info": task_info,
+                            "task_type": "production"
+                        })
+                        
+                        remaining_duration -= part_duration
+                        part_counter += 1
+                
+                # Continuer après la pause
+                current_start = find_next_available_slot(pause_end, remaining_duration)
         
-        return start_dt
+        # Si on sort de la boucle à cause de max_iterations, créer le reste de la tâche
+        if remaining_duration > 0 and iteration_count >= max_iterations:
+            job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
+            final_end = current_start + timedelta(minutes=remaining_duration)
+            
+            current_items.append({
+                "id": f"{machine_id}_{job_id}_{task_info['task_id']}_final",
+                "group": machine_id,
+                "title": f"{job_label} (fin)",
+                "start_time": current_start.isoformat(),
+                "end_time": final_end.isoformat(),
+                "job_info": task_info,
+                "task_type": "production"
+            })
+        
+        return current_items
 
     # Suivre le temps par machine ET par job pour respecter les contraintes Flowshop
     machine_current_time = {}
@@ -124,21 +197,15 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
         # Trouver le prochain créneau disponible
         actual_start = find_next_available_slot(start_time, duration_minutes)
         
-        # Vérifier et gérer les conflits avec les pauses
-        actual_start = avoid_pauses(actual_start, duration_minutes, pauses)
-        actual_end = actual_start + timedelta(minutes=duration_minutes)
+        # Gérer les pauses avec division si nécessaire
+        task_items = handle_pauses(actual_start, duration_minutes, pauses, machine_id, job_id, task_info, job_names)
+        items.extend(task_items)
         
-        # Créer la tâche (les pauses sont automatiquement évitées)
-        job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
-        items.append({
-            "id": f"{machine_id}_{job_id}_{task_info['task_id']}",
-            "group": machine_id,
-            "title": job_label,
-            "start_time": actual_start.isoformat(),
-            "end_time": actual_end.isoformat(),
-            "job_info": task_info,
-            "task_type": "production"
-        })
+        # Calculer la fin réelle en prenant la dernière partie de la tâche
+        if task_items:
+            actual_end = datetime.fromisoformat(task_items[-1]["end_time"])
+        else:
+            actual_end = actual_start + timedelta(minutes=duration_minutes)
         
         # Mettre à jour le temps de la machine ET du job (contrainte Flowshop)
         machine_current_time[machine_id] = actual_end
