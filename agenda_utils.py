@@ -44,9 +44,9 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                 if current_dt < day_start:
                     current_dt = day_start
                 
-                # Vérifier si la tâche rentre dans la journée
-                time_until_close = int((day_end - current_dt).total_seconds() / 60)
-                if duration_minutes <= time_until_close:
+                # CORRECTION CRITIQUE : Vérifier que la tâche FINIT avant la fermeture
+                task_end_time = current_dt + timedelta(minutes=duration_minutes)
+                if task_end_time <= day_end:
                     return current_dt
             
             # Passer au jour suivant à l'heure d'ouverture
@@ -137,7 +137,8 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                     })
                 
                 if second_part_duration > 0:
-                    actual_start = second_part_start
+                    # Retrouver le bon créneau pour la deuxième partie
+                    actual_start = find_next_available_slot(second_part_start, second_part_duration)
                     actual_end = actual_start + timedelta(minutes=second_part_duration)
                     job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
                     items.append({
@@ -150,8 +151,8 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                         "task_type": "production"
                     })
             else:
-                # Décaler toute la tâche après la pause
-                actual_start = pause_end
+                # Décaler toute la tâche après la pause en respectant les heures d'ouverture
+                actual_start = find_next_available_slot(pause_end, duration_minutes)
                 actual_end = actual_start + timedelta(minutes=duration_minutes)
                 job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
                 items.append({
