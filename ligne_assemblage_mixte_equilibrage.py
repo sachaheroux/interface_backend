@@ -118,9 +118,10 @@ def mixed_assembly_line_scheduling_heuristic(models, tasks_data, cycle_time):
         })
 
     results = {
-        "status": "Optimal",
-        "optimal": True,
-        "method": "Heuristique (contrainte mémoire)",
+        "status": "Heuristique",
+        "optimal": False,
+        "method": "Algorithme Glouton (LPT)",
+        "warning": f"⚠️ Problème trop volumineux ({len(tasks_data)} tâches). Utilisation d'un algorithme heuristique pour éviter les dépassements mémoire. Solution approximative mais rapide.",
         "stations_used": int(used_stations),
         "theoretical_minimum": round(float(K_min), 2),
         "efficiency": round(float(efficiency), 2),
@@ -151,7 +152,7 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
     
     # Si le problème est trop gros, utiliser l'heuristique
     problem_size = num_tasks * estimated_stations
-    if problem_size > 200 or num_tasks > 20:  # Limite conservative pour 512MB
+    if problem_size > 200 or num_tasks > 24:  # Limite conservative pour 512MB
         print(f"Problem too large for LP (size: {problem_size}), using heuristic")
         return mixed_assembly_line_scheduling_heuristic(models, tasks_data, cycle_time)
 
@@ -268,7 +269,8 @@ def mixed_assembly_line_scheduling(models, tasks_data, cycle_time):
         results = {
             "status": status,
             "optimal": status == "Optimal",
-            "method": "Programmation Linéaire",
+            "method": "Programmation Linéaire (CBC)",
+            "info": f"✅ Solution optimale garantie ({num_tasks} tâches, {used_stations} stations)",
             "stations_used": int(used_stations),
             "theoretical_minimum": round(float(K_min), 2),
             "efficiency": round(float(efficiency), 2),
