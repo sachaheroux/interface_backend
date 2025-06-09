@@ -35,27 +35,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://interface-frontend-51rv.vercel.app",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "*"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Route de test pour vérifier que le serveur fonctionne
-@app.get("/")
-def root():
-    return {"message": "Backend API is running", "status": "healthy"}
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "service": "Interface Système de Production Backend"}
 
 # ----------- Gantt utilitaire -----------
 
