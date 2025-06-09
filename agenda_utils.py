@@ -28,7 +28,7 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
 
     items = []
 
-    # Fonction pour trouver le prochain créneau disponible (évite pauses et heures fermeture)
+    # Fonction pour trouver le prochain créneau disponible 
     def find_next_available_slot(current_dt, duration_minutes):
         while True:
             current_day = current_dt.date()
@@ -44,30 +44,36 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                 if current_dt < day_start:
                     current_dt = day_start
                 
-                # CORRECTION CRITIQUE : Vérifier que la tâche FINIT avant la fermeture
+                # Vérifier que la tâche FINIT avant la fermeture
                 task_end_time = current_dt + timedelta(minutes=duration_minutes)
                 if task_end_time <= day_end:
-                    # Vérifier les conflits avec les pauses
-                    has_pause_conflict = False
-                    for pause in pauses:
-                        start_time_obj = datetime.strptime(pause["start"], "%H:%M").time()
-                        end_time_obj = datetime.strptime(pause["end"], "%H:%M").time()
-                        pause_start = current_dt.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
-                        pause_end = current_dt.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
-                        
-                        if current_dt < pause_end and task_end_time > pause_start:
-                            # Conflit détecté, décaler après cette pause
-                            current_dt = pause_end
-                            has_pause_conflict = True
-                            break
-                    
-                    if not has_pause_conflict:
-                        return current_dt
-                    # Si conflit, recommencer la boucle avec la nouvelle heure
-                    continue
+                    return current_dt
             
             # Passer au jour suivant à l'heure d'ouverture
             current_dt = (current_dt + timedelta(days=1)).replace(hour=open_hour, minute=open_min, second=0, microsecond=0)
+
+    # Fonction pour éviter les pauses (simple et sûre)
+    def avoid_pauses(start_dt, duration_minutes, configured_pauses):
+        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        
+        for pause in configured_pauses:
+            try:
+                start_time_obj = datetime.strptime(pause["start"], "%H:%M").time()
+                end_time_obj = datetime.strptime(pause["end"], "%H:%M").time()
+                pause_start = start_dt.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
+                pause_end = start_dt.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
+                
+                # Si la tâche chevauche avec la pause
+                if start_dt < pause_end and end_dt > pause_start:
+                    # Décaler la tâche après la pause
+                    new_start = pause_end
+                    # Trouver un nouveau créneau valide après la pause
+                    return find_next_available_slot(new_start, duration_minutes)
+            except Exception as e:
+                print(f"Erreur lors du traitement de la pause {pause}: {e}")
+                continue
+        
+        return start_dt
 
     # Suivre le temps par machine ET par job pour respecter les contraintes Flowshop
     machine_current_time = {}
@@ -97,8 +103,6 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
     if not pauses:
         pauses = [{"start": "12:00", "end": "13:00", "name": "Pause déjeuner"}]
     
-    print(f"🔍 PAUSES UTILISÉES DANS AGENDA: {pauses}")
-    
     items = []
     
     for task_info in all_tasks:
@@ -117,8 +121,11 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
         
         start_time = max(machine_available_time, job_available_time)
             
-        # Trouver le prochain créneau disponible (évite automatiquement les pauses)
+        # Trouver le prochain créneau disponible
         actual_start = find_next_available_slot(start_time, duration_minutes)
+        
+        # Vérifier et gérer les conflits avec les pauses
+        actual_start = avoid_pauses(actual_start, duration_minutes, pauses)
         actual_end = actual_start + timedelta(minutes=duration_minutes)
         
         # Créer la tâche (les pauses sont automatiquement évitées)
