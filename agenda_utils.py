@@ -28,7 +28,7 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
 
     items = []
 
-    # Fonction pour trouver le prochain créneau disponible 
+    # Fonction pour trouver le prochain créneau disponible (peut commencer même si finit le jour suivant)
     def find_next_available_slot(current_dt, duration_minutes):
         while True:
             current_day = current_dt.date()
@@ -44,15 +44,15 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                 if current_dt < day_start:
                     current_dt = day_start
                 
-                # Vérifier que la tâche FINIT avant la fermeture
-                task_end_time = current_dt + timedelta(minutes=duration_minutes)
-                if task_end_time <= day_end:
+                # NOUVEAU : Permettre de commencer même si la tâche se termine le jour suivant
+                # On vérifie juste qu'on peut commencer dans les heures d'ouverture
+                if current_dt < day_end:
                     return current_dt
             
             # Passer au jour suivant à l'heure d'ouverture
             current_dt = (current_dt + timedelta(days=1)).replace(hour=open_hour, minute=open_min, second=0, microsecond=0)
 
-    # Fonction pour gérer les pauses intelligemment (avec division si nécessaire)
+    # Fonction pour gérer les pauses intelligemment (avec division si nécessaire + entre jours)
     def handle_pauses(start_dt, duration_minutes, configured_pauses, machine_id, job_id, task_info, job_names):
         current_items = []
         remaining_duration = duration_minutes
@@ -64,7 +64,20 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
         
         while remaining_duration > 0 and iteration_count < max_iterations:
             iteration_count += 1
-            current_end = current_start + timedelta(minutes=remaining_duration)
+            
+            # Calculer la fin de journée pour le jour courant
+            current_day_end = current_start.replace(hour=close_hour, minute=close_min, second=0, microsecond=0)
+            
+            # Calculer combien de temps on peut travailler aujourd'hui
+            time_until_close = max(0, int((current_day_end - current_start).total_seconds() / 60))
+            work_today = min(remaining_duration, time_until_close)
+            
+            if work_today <= 0:
+                # Plus de temps aujourd'hui, passer au jour suivant
+                current_start = find_next_available_slot(current_start + timedelta(days=1), remaining_duration)
+                continue
+                
+            current_end = current_start + timedelta(minutes=work_today)
             
             # Chercher la première pause qui interfère
             conflicting_pause = None
@@ -86,9 +99,15 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                     continue
             
             if conflicting_pause is None:
-                # Aucune pause ne gêne, créer la tâche complète
+                # Aucune pause ne gêne, créer la partie pour aujourd'hui
                 job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
-                suffix = f" ({part_counter}/{part_counter})" if part_counter > 1 else ""
+                
+                if work_today == remaining_duration:
+                    # Tâche complète dans la journée
+                    suffix = f" ({part_counter}/{part_counter})" if part_counter > 1 else ""
+                else:
+                    # Partie de tâche
+                    suffix = f" (partie {part_counter})"
                 
                 current_items.append({
                     "id": f"{machine_id}_{job_id}_{task_info['task_id']}_part{part_counter}",
@@ -99,7 +118,14 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                     "job_info": task_info,
                     "task_type": "production"
                 })
-                break
+                
+                remaining_duration -= work_today
+                if remaining_duration > 0:
+                    # Continuer le jour suivant
+                    part_counter += 1
+                    current_start = find_next_available_slot(current_start + timedelta(days=1), remaining_duration)
+                else:
+                    break
             else:
                 # Une pause interfère, diviser la tâche
                 start_time_obj = datetime.strptime(conflicting_pause["start"], "%H:%M").time()
@@ -109,7 +135,7 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                 
                 if current_start < pause_start:
                     # Créer une partie avant la pause
-                    part_end = pause_start
+                    part_end = min(pause_start, current_end)  # Ne pas dépasser la fin de journée
                     part_duration = int((part_end - current_start).total_seconds() / 60)
                     
                     if part_duration > 0:

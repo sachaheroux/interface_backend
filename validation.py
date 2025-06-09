@@ -60,6 +60,7 @@ class ExtendedRequest(BaseModel):
     weekend_days: Optional[List[str]] = None
     jours_feries: Optional[List[str]] = None
     due_date_times: Optional[List[str]] = None
+    pauses: Optional[List[Dict[str, str]]] = None
 
 class JohnsonRequest(BaseModel):
     jobs_data: List[List[float]]
