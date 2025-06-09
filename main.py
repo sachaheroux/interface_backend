@@ -387,11 +387,12 @@ def run_contraintes_agenda(request: ExtendedRequest):
         result = contraintes.schedule(request.jobs_data, request.due_dates)
         
         # Paramètres par défaut si pas fournis
-        start_datetime = getattr(request, 'agenda_start_datetime', None) or "2024-01-15T08:00:00"
+        start_datetime = getattr(request, 'agenda_start_datetime', None) or "2025-06-01T08:00:00"
         opening_hours = getattr(request, 'opening_hours', None) or {"start": "08:00", "end": "17:00"}
         weekend_days = getattr(request, 'weekend_days', None) or ["samedi", "dimanche"]
         jours_feries = getattr(request, 'jours_feries', None) or []
         due_date_times = getattr(request, 'due_date_times', None) or []
+        pauses = getattr(request, 'pauses', None) or [{"start": "12:00", "end": "13:00", "name": "Pause déjeuner"}]
         
         agenda_data = generer_agenda_json(
             result, 
@@ -401,7 +402,8 @@ def run_contraintes_agenda(request: ExtendedRequest):
             jours_feries, 
             request.unite,
             request.machine_names,
-            request.job_names
+            request.job_names,
+            pauses
         )
         
         # Ajouter les informations de due dates

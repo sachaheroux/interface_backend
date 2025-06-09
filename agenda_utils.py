@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days, jours_feries, unite="heures", machine_names=None, job_names=None):
+def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days, jours_feries, unite="heures", machine_names=None, job_names=None, pauses=None):
     base_datetime = datetime.fromisoformat(start_datetime_str)
     unit_multipliers = {"minutes": 1, "heures": 60, "jours": 1440}
     minute_multiplier = unit_multipliers.get(unite, 60)
@@ -52,91 +52,133 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
             # Passer au jour suivant à l'heure d'ouverture
             current_dt = (current_dt + timedelta(days=1)).replace(hour=open_hour, minute=open_min, second=0, microsecond=0)
 
-    # Suivre le temps par machine pour respecter les contraintes Flowshop
+    # Suivre le temps par machine ET par job pour respecter les contraintes Flowshop
     machine_current_time = {}
+    job_current_time = {}
     
+    # Structure pour stocker toutes les tâches avec leurs informations de job et machine
+    all_tasks = []
     for machine_id_str, tasks in result["machines"].items():
         machine_id = int(machine_id_str)
-        machine_current_time[machine_id] = base_datetime
+        for task in tasks:
+            all_tasks.append({
+                "machine": machine_id,
+                "job": task["job"],
+                "task_id": task.get("task", 0),
+                "duration": task["duration"] * minute_multiplier,
+                "original_start": task["start"]
+            })
+    
+    # Trier les tâches par leur temps de début original pour respecter l'ordre optimal
+    all_tasks.sort(key=lambda t: t["original_start"])
+    
+    # Initialiser les temps
+    for machine_id_str in result["machines"].keys():
+        machine_current_time[int(machine_id_str)] = base_datetime
+    
+    items = []
+    
+    for task_info in all_tasks:
+        machine_id = task_info["machine"]
+        job_id = task_info["job"]
+        duration_minutes = task_info["duration"]
         
-        for idx, task in enumerate(tasks):
-            duration_minutes = task["duration"] * minute_multiplier
+        # Pour Flowshop: une tâche ne peut pas commencer avant que :
+        # 1. La machine soit libre
+        # 2. Le job précédent sur cette machine soit fini
+        # 3. La tâche précédente du même job soit finie (contrainte Flowshop)
+        
+        # Temps minimum = max(temps machine, temps job précédent)
+        machine_available_time = machine_current_time.get(machine_id, base_datetime)
+        job_available_time = job_current_time.get(job_id, base_datetime)
+        
+        start_time = max(machine_available_time, job_available_time)
             
-            # Pour Flowshop: une tâche ne peut pas commencer avant que la précédente soit finie
-            # ET pas avant que la même tâche soit finie sur la machine précédente
-            start_time = machine_current_time[machine_id]
+        # Trouver le prochain créneau disponible
+        actual_start = find_next_available_slot(start_time, duration_minutes)
+        actual_end = actual_start + timedelta(minutes=duration_minutes)
+        
+        # Gérer toutes les pauses configurées
+        if not pauses:
+            pauses = [{"start": "12:00", "end": "13:00", "name": "Pause déjeuner"}]
+        
+        # Vérifier les conflits avec toutes les pauses
+        pause_conflicts = []
+        for pause in pauses:
+            start_time_obj = datetime.strptime(pause["start"], "%H:%M").time()
+            end_time_obj = datetime.strptime(pause["end"], "%H:%M").time()
+            pause_start = actual_start.replace(hour=start_time_obj.hour, minute=start_time_obj.minute, second=0, microsecond=0)
+            pause_end = actual_start.replace(hour=end_time_obj.hour, minute=end_time_obj.minute, second=0, microsecond=0)
             
-            # Trouver le prochain créneau disponible
-            actual_start = find_next_available_slot(start_time, duration_minutes)
-            actual_end = actual_start + timedelta(minutes=duration_minutes)
-            
-            # Gérer les pauses déjeuner (12h-13h par défaut)
-            lunch_start = actual_start.replace(hour=12, minute=0, second=0, microsecond=0)
-            lunch_end = actual_start.replace(hour=13, minute=0, second=0, microsecond=0)
-            
-            # Si la tâche chevauche la pause déjeuner, l'ajuster
-            if actual_start < lunch_end and actual_end > lunch_start:
-                if actual_start < lunch_start:
-                    # Diviser la tâche avant et après la pause
-                    first_part_end = lunch_start
-                    first_part_duration = int((first_part_end - actual_start).total_seconds() / 60)
-                    second_part_start = lunch_end
-                    second_part_duration = duration_minutes - first_part_duration
-                    
-                    if first_part_duration > 0:
-                        job_label = job_names[task["job"]] if job_names and isinstance(task["job"], int) else f"Job {task['job']}"
-                        items.append({
-                            "id": f"{machine_id}_{idx}_part1",
-                            "group": machine_id,
-                            "title": f"{job_label} (1/2)",
-                            "start_time": actual_start.isoformat(),
-                            "end_time": first_part_end.isoformat(),
-                            "job_info": task,
-                            "task_type": "production"
-                        })
-                    
-                    if second_part_duration > 0:
-                        actual_start = second_part_start
-                        actual_end = actual_start + timedelta(minutes=second_part_duration)
-                        job_label = job_names[task["job"]] if job_names and isinstance(task["job"], int) else f"Job {task['job']}"
-                        items.append({
-                            "id": f"{machine_id}_{idx}_part2",
-                            "group": machine_id,
-                            "title": f"{job_label} (2/2)",
-                            "start_time": actual_start.isoformat(),
-                            "end_time": actual_end.isoformat(),
-                            "job_info": task,
-                            "task_type": "production"
-                        })
-                else:
-                    # Décaler toute la tâche après la pause
-                    actual_start = lunch_end
-                    actual_end = actual_start + timedelta(minutes=duration_minutes)
-                    job_label = job_names[task["job"]] if job_names and isinstance(task["job"], int) else f"Job {task['job']}"
+            if actual_start < pause_end and actual_end > pause_start:
+                pause_conflicts.append((pause_start, pause_end, pause["name"]))
+        
+        # Gérer les conflits avec les pauses
+        if pause_conflicts:
+            # Pour simplifier, on gère le premier conflit trouvé
+            pause_start, pause_end, pause_name = pause_conflicts[0]
+            if actual_start < pause_start:
+                # Diviser la tâche avant et après la pause
+                first_part_end = pause_start
+                first_part_duration = int((first_part_end - actual_start).total_seconds() / 60)
+                second_part_start = pause_end
+                second_part_duration = duration_minutes - first_part_duration
+                
+                if first_part_duration > 0:
+                    job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
                     items.append({
-                        "id": f"{machine_id}_{idx}",
+                        "id": f"{machine_id}_{job_id}_{task_info['task_id']}_part1",
                         "group": machine_id,
-                        "title": job_label,
+                        "title": f"{job_label} (1/2)",
+                        "start_time": actual_start.isoformat(),
+                        "end_time": first_part_end.isoformat(),
+                        "job_info": task_info,
+                        "task_type": "production"
+                    })
+                
+                if second_part_duration > 0:
+                    actual_start = second_part_start
+                    actual_end = actual_start + timedelta(minutes=second_part_duration)
+                    job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
+                    items.append({
+                        "id": f"{machine_id}_{job_id}_{task_info['task_id']}_part2",
+                        "group": machine_id,
+                        "title": f"{job_label} (2/2)",
                         "start_time": actual_start.isoformat(),
                         "end_time": actual_end.isoformat(),
-                        "job_info": task,
+                        "job_info": task_info,
                         "task_type": "production"
                     })
             else:
-                # Pas de conflit avec la pause déjeuner
-                job_label = job_names[task["job"]] if job_names and isinstance(task["job"], int) else f"Job {task['job']}"
+                # Décaler toute la tâche après la pause
+                actual_start = pause_end
+                actual_end = actual_start + timedelta(minutes=duration_minutes)
+                job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
                 items.append({
-                    "id": f"{machine_id}_{idx}",
+                    "id": f"{machine_id}_{job_id}_{task_info['task_id']}",
                     "group": machine_id,
                     "title": job_label,
                     "start_time": actual_start.isoformat(),
                     "end_time": actual_end.isoformat(),
-                    "job_info": task,
+                    "job_info": task_info,
                     "task_type": "production"
                 })
-            
-            # Mettre à jour le temps de la machine
-            machine_current_time[machine_id] = actual_end
+        else:
+            # Pas de conflit avec la pause déjeuner
+            job_label = job_names[job_id] if job_names and isinstance(job_id, int) and job_id < len(job_names) else f"Job {job_id}"
+            items.append({
+                "id": f"{machine_id}_{job_id}_{task_info['task_id']}",
+                "group": machine_id,
+                "title": job_label,
+                "start_time": actual_start.isoformat(),
+                "end_time": actual_end.isoformat(),
+                "job_info": task_info,
+                "task_type": "production"
+            })
+        
+        # Mettre à jour le temps de la machine ET du job (contrainte Flowshop)
+        machine_current_time[machine_id] = actual_end
+        job_current_time[job_id] = actual_end
 
     return {
         "groups": groups,
