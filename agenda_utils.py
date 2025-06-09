@@ -73,8 +73,10 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
             work_today = min(remaining_duration, time_until_close)
             
             if work_today <= 0:
-                # Plus de temps aujourd'hui, passer au jour suivant
-                current_start = find_next_available_slot(current_start + timedelta(days=1), remaining_duration)
+                # Plus de temps aujourd'hui, passer au jour suivant au début des heures d'ouverture
+                next_day = current_start + timedelta(days=1)
+                next_day_start = next_day.replace(hour=open_hour, minute=open_min, second=0, microsecond=0)
+                current_start = find_next_available_slot(next_day_start, remaining_duration)
                 continue
                 
             current_end = current_start + timedelta(minutes=work_today)
@@ -121,9 +123,11 @@ def generer_agenda_json(result, start_datetime_str, opening_hours, weekend_days,
                 
                 remaining_duration -= work_today
                 if remaining_duration > 0:
-                    # Continuer le jour suivant
+                    # Continuer le jour suivant au début des heures d'ouverture
                     part_counter += 1
-                    current_start = find_next_available_slot(current_start + timedelta(days=1), remaining_duration)
+                    next_day = current_start + timedelta(days=1)
+                    next_day_start = next_day.replace(hour=open_hour, minute=open_min, second=0, microsecond=0)
+                    current_start = find_next_available_slot(next_day_start, remaining_duration)
                 else:
                     break
             else:
