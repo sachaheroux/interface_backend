@@ -380,6 +380,40 @@ def run_contraintes_gantt(request: ExtendedRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/contraintes/agenda")
+def run_contraintes_agenda(request: ExtendedRequest):
+    try:
+        validate_jobs_data(request.jobs_data, request.due_dates)
+        result = contraintes.schedule(request.jobs_data, request.due_dates)
+        
+        # Paramètres par défaut si pas fournis
+        start_datetime = getattr(request, 'agenda_start_datetime', None) or "2024-01-15T08:00:00"
+        opening_hours = getattr(request, 'opening_hours', None) or {"start": "08:00", "end": "17:00"}
+        weekend_days = getattr(request, 'weekend_days', None) or ["samedi", "dimanche"]
+        jours_feries = getattr(request, 'jours_feries', None) or []
+        due_date_times = getattr(request, 'due_date_times', None) or []
+        
+        agenda_data = generer_agenda_json(
+            result, 
+            start_datetime, 
+            opening_hours, 
+            weekend_days, 
+            jours_feries, 
+            request.unite,
+            request.machine_names,
+            request.job_names
+        )
+        
+        # Ajouter les informations de due dates
+        agenda_data["due_dates"] = {
+            request.job_names[i]: request.due_dates[i] for i in range(len(request.job_names))
+        }
+        agenda_data["due_date_times"] = due_date_times
+        
+        return agenda_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # ----------- Ligne d'assemblage - Précédence -----------
 
 class PrecedenceRequest:
