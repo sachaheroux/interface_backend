@@ -34,8 +34,8 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
             if not isinstance(duration, (int, float)):
                 raise ValueError(f"La durée dans la tâche {task_index} du job {job_index} doit être un nombre.")
 
-            if machine < 0 or duration <= 0:
-                raise ValueError(f"Tâche {task_index} du job {job_index} contient des valeurs négatives ou nulles.")
+            if machine < 0 or duration < 0:
+                raise ValueError(f"Tâche {task_index} du job {job_index} contient des valeurs négatives.")
 
             machine_ids.add(machine)
 

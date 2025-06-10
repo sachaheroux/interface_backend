@@ -24,8 +24,13 @@ def schedule(jobs_data, due_dates):
             suffix = f'_{job_id}_{task_id}'
             start_var = model.NewIntVar(0, horizon, f'start{suffix}')
             end_var = model.NewIntVar(0, horizon, f'end{suffix}')
+            
+            # OR-Tools supporte les intervalles de durée 0
             interval_var = model.NewIntervalVar(start_var, duration, end_var, f'interval{suffix}')
             all_tasks[job_id, task_id] = task_type(start=start_var, end=end_var, interval=interval_var)
+            
+            # Ajouter toutes les tâches aux contraintes de non-chevauchement
+            # Les tâches de durée 0 ne posent pas de problème à OR-Tools
             machine_to_intervals[machine].append(interval_var)
 
     for machine in all_machines:
