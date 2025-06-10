@@ -65,6 +65,10 @@ def schedule(jobs_data, due_dates):
             })
             completion_times[job_id] = max(completion_times[job_id], solver.Value(all_tasks[job_id, task_id].end))
 
+    # Trier les tâches par temps de début pour chaque machine
+    for machine in assigned_jobs:
+        assigned_jobs[machine].sort(key=lambda task: task["start"])
+
     for j, c in enumerate(completion_times):
         delay = max(0, c - due_dates[j])
         total_delay += delay
