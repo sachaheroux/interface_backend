@@ -362,17 +362,31 @@ def run_contraintes(request: ExtendedRequest):
             getattr(request, 'machines_per_stage', None)
         )
         
-        # Formatage unifié
-        machine_names_to_use = request.machine_names or [f"Machine {i+1}" for i in range(len(request.jobs_data[0]))]
-        return {
-            "makespan": result["makespan"],
-            "flowtime": result["flowtime"],
-            "retard_cumule": result["retard_cumule"],
-            "completion_times": result["completion_times"],
-            "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if int(m) < len(machine_names_to_use)},
-            "raw_machines": result["machines"],
-            "gantt_url": result.get("gantt_url")
-        }
+        # Formatage unifié - adapter selon le type de résultat
+        if 'raw_machines' in result:
+            # Mode hybride : utiliser les noms d'étapes pour l'affichage
+            machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
+            return {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if int(m) < len(machine_names_to_use)},
+                "raw_machines": result["raw_machines"],  # Données pour Gantt 
+                "gantt_url": result.get("gantt_url")
+            }
+        else:
+            # Mode classique : utiliser les noms de machines
+            machine_names_to_use = request.machine_names or [f"Machine {i+1}" for i in range(len(request.jobs_data[0]))]
+            return {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if int(m) < len(machine_names_to_use)},
+                "raw_machines": result["machines"],
+                "gantt_url": result.get("gantt_url")
+            }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

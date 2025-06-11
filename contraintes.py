@@ -189,14 +189,15 @@ def _flowshop_hybride_solver(jobs_data, machines_per_stage, job_names=None, mach
             current_stage_machines = stage_to_machines[stage_idx]
             next_stage_machines = stage_to_machines[stage_idx + 1]
             
-            # Fin de l'étape courante
-            current_end = model.NewIntVar(0, horizon, f'job_{job_idx}_stage_{stage_idx}_end')
-            for machine_idx in current_stage_machines:
-                model.Add(current_end >= task_ends[(job_idx, machine_idx)]).OnlyEnforceIf(tasks[(job_idx, machine_idx)])
-            
-            # Début de l'étape suivante
+            # Pour chaque machine de l'étape suivante
             for next_machine_idx in next_stage_machines:
-                model.Add(task_starts[(job_idx, next_machine_idx)] >= current_end).OnlyEnforceIf(tasks[(job_idx, next_machine_idx)])
+                # La tâche sur cette machine ne peut commencer qu'après la fin de TOUTES les machines de l'étape précédente
+                for current_machine_idx in current_stage_machines:
+                    # Si les deux tâches sont assignées, contrainte de précédence
+                    model.Add(task_starts[(job_idx, next_machine_idx)] >= task_ends[(job_idx, current_machine_idx)]).OnlyEnforceIf([
+                        tasks[(job_idx, current_machine_idx)],
+                        tasks[(job_idx, next_machine_idx)]
+                    ])
     
     # Contraintes de non-chevauchement: une machine ne peut traiter qu'un job à la fois
     for machine_idx in range(total_machines):
@@ -236,42 +237,73 @@ def _flowshop_hybride_solver(jobs_data, machines_per_stage, job_names=None, mach
 def _extract_hybride_solution(solver, tasks, task_starts, task_ends, machine_to_stage, makespan, 
                              job_names, machine_names, due_dates, durations):
     """
-    Extrait la solution du solveur hybride
+    Extrait la solution du solveur hybride et la convertit au format compatible avec le frontend
     """
     solution_makespan = solver.Value(makespan)
     
-    # Extraire les tâches assignées
-    assigned_tasks = {}
-    for machine_idx in range(len(machine_to_stage)):
-        assigned_tasks[machine_idx] = []
+    print(f"DEBUG: Extraction solution - makespan = {solution_makespan}")
     
+    # Créer un mapping des étapes aux machines virtuelles (pour compatibilité avec le format classique)
+    stage_machines = {}  # Format: {stage_idx: [list of tasks]}
+    
+    # Extraire toutes les tâches assignées
+    all_assigned_tasks = []
     for job_idx in range(len(job_names)):
+        job_sequence = []  # Pour vérifier la séquence
         for machine_idx in range(len(machine_to_stage)):
             if solver.Value(tasks[(job_idx, machine_idx)]):
                 start_time = solver.Value(task_starts[(job_idx, machine_idx)])
                 end_time = solver.Value(task_ends[(job_idx, machine_idx)])
                 duration = end_time - start_time
+                stage_idx = machine_to_stage[machine_idx]
                 
-                assigned_tasks[machine_idx].append({
+                task_info = {
                     'job': job_idx,
+                    'task': stage_idx,  # task ID = stage ID pour compatibilité 
                     'start': start_time,
                     'duration': duration,
-                    'stage': machine_to_stage[machine_idx]
-                })
+                    'machine_idx': machine_idx,
+                    'stage': stage_idx
+                }
+                
+                all_assigned_tasks.append(task_info)
+                job_sequence.append((stage_idx, start_time, duration))
+        
+        # Debug: afficher la séquence de chaque job
+        job_sequence.sort(key=lambda x: x[1])  # Trier par temps de début
+        print(f"DEBUG: Job {job_idx} sequence: {job_sequence}")
     
-    # Trier les tâches par temps de début
-    for machine_idx in assigned_tasks:
-        assigned_tasks[machine_idx].sort(key=lambda x: x['start'])
+    # Regrouper par étape (comme dans le format classique)
+    assigned_tasks = {}
+    for task in all_assigned_tasks:
+        stage_idx = task['stage']
+        if stage_idx not in assigned_tasks:
+            assigned_tasks[stage_idx] = []
+        
+        # Format compatible avec le frontend classique
+        assigned_tasks[stage_idx].append({
+            'job': task['job'],
+            'task': task['task'],
+            'start': task['start'],
+            'duration': task['duration']
+        })
     
-    # Calculer les temps de complétion
+    # Trier les tâches par temps de début pour chaque étape
+    for stage_idx in assigned_tasks:
+        assigned_tasks[stage_idx].sort(key=lambda x: x['start'])
+        print(f"DEBUG: Stage {stage_idx} tasks: {assigned_tasks[stage_idx]}")
+    
+    # Calculer les temps de complétion (dernier temps de fin pour chaque job)
     completion_times = {}
     for job_idx in range(len(job_names)):
         max_completion = 0
-        for machine_idx in range(len(machine_to_stage)):
-            for task in assigned_tasks[machine_idx]:
-                if task['job'] == job_idx:
-                    max_completion = max(max_completion, task['start'] + task['duration'])
+        for task in all_assigned_tasks:
+            if task['job'] == job_idx:
+                completion_time = task['start'] + task['duration']
+                max_completion = max(max_completion, completion_time)
         completion_times[f"Job {job_idx}"] = max_completion
+    
+    print(f"DEBUG: Completion times: {completion_times}")
     
     # Calculer le retard cumulé
     total_tardiness = 0
@@ -282,12 +314,30 @@ def _extract_hybride_solution(solver, tasks, task_starts, task_ends, machine_to_
                 tardiness = max(0, completion - due_dates[job_idx])
                 total_tardiness += tardiness
     
-    # Créer le diagramme de Gantt
-    gantt_url = _create_hybride_gantt_chart(assigned_tasks, solution_makespan, job_names, machine_names, machine_to_stage)
+    # Créer le diagramme de Gantt avec les vraies machines physiques
+    raw_machine_data = {}
+    for task in all_assigned_tasks:
+        machine_idx = task['machine_idx']
+        if machine_idx not in raw_machine_data:
+            raw_machine_data[machine_idx] = []
+        
+        raw_machine_data[machine_idx].append({
+            'job': task['job'],
+            'task': task['task'],
+            'start': task['start'],
+            'duration': task['duration']
+        })
+    
+    # Trier par temps de début
+    for machine_idx in raw_machine_data:
+        raw_machine_data[machine_idx].sort(key=lambda x: x['start'])
+    
+    gantt_url = _create_hybride_gantt_chart(raw_machine_data, solution_makespan, job_names, machine_names, machine_to_stage)
     
     return {
         'makespan': solution_makespan,
-        'machines': assigned_tasks,
+        'machines': assigned_tasks,  # Format par étapes pour affichage frontend
+        'raw_machines': raw_machine_data,  # Format par machines physiques pour Gantt
         'completion_times': completion_times,
         'flowtime': sum(completion_times.values()) / len(completion_times) if completion_times else 0,
         'retard_cumule': total_tardiness,
@@ -312,8 +362,20 @@ def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_nam
         for machine_idx, tasks in assigned_tasks.items():
             if tasks:  # S'il y a des tâches sur cette machine
                 stage_idx = machine_to_stage.get(machine_idx, 0)
-                stage_name = machine_names[stage_idx] if stage_idx < len(machine_names) else f"Machine {stage_idx + 1}"
-                machine_label = f"{stage_name} - M{machine_idx}"
+                stage_name = machine_names[stage_idx] if stage_idx < len(machine_names) else f"Étape {stage_idx + 1}"
+                
+                # Calculer le numéro de sous-machine dans l'étape 
+                machines_in_same_stage = [m for m, s in machine_to_stage.items() if s == stage_idx]
+                machines_in_same_stage.sort()
+                sub_machine_position = machines_in_same_stage.index(machine_idx)
+                
+                # Nomenclature M1, M1', M1''
+                if sub_machine_position == 0:
+                    sub_name = ""
+                else:
+                    sub_name = "'" * sub_machine_position
+                
+                machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
                 machine_labels.append(machine_label)
                 
                 for task in tasks:
