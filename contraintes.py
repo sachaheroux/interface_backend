@@ -155,6 +155,18 @@ def _flowshop_hybride_solver(jobs_data, machines_per_stage, job_names=None, mach
     
     total_machines = machine_counter
     
+    print(f"DEBUG: Configuration des machines:")
+    print(f"  - Nombre total de machines physiques: {total_machines}")
+    print(f"  - Mapping machine_to_stage: {machine_to_stage}")
+    print(f"  - Mapping stage_to_machines: {stage_to_machines}")
+    
+    # Vérifier qu'on a bien du parallélisme
+    parallel_stages = [stage for stage, machines in stage_to_machines.items() if len(machines) > 1]
+    if parallel_stages:
+        print(f"  - Étapes avec parallélisme: {parallel_stages}")
+    else:
+        print(f"  - ATTENTION: Aucune étape avec parallélisme détectée!")
+    
     # Horizon temporel (convertir en entier pour OR-Tools)
     horizon = int(sum(sum(job_durations) for job_durations in durations) * 2)
     print(f"DEBUG: Horizon = {horizon}")
@@ -332,6 +344,17 @@ def _extract_hybride_solution(solver, tasks, task_starts, task_ends, machine_to_
     for machine_idx in raw_machine_data:
         raw_machine_data[machine_idx].sort(key=lambda x: x['start'])
     
+    # Debug: Analyser l'utilisation du parallélisme
+    print(f"DEBUG: Analyse du parallélisme:")
+    for stage_idx in range(len(machine_names)):
+        stage_machines = [m for m, s in machine_to_stage.items() if s == stage_idx]
+        used_machines = [m for m in stage_machines if m in raw_machine_data and len(raw_machine_data[m]) > 0]
+        print(f"  - Étape {stage_idx} ({machine_names[stage_idx]}): {len(used_machines)}/{len(stage_machines)} machines utilisées")
+        if len(used_machines) < len(stage_machines):
+            print(f"    ⚠️  Machines inutilisées: {set(stage_machines) - set(used_machines)}")
+        if len(used_machines) > 1:
+            print(f"    ✅ Parallélisme exploité!")
+    
     gantt_url = _create_hybride_gantt_chart(raw_machine_data, solution_makespan, job_names, machine_names, machine_to_stage)
     
     return {
@@ -347,7 +370,7 @@ def _extract_hybride_solution(solver, tasks, task_starts, task_ends, machine_to_
 
 def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_names, machine_to_stage):
     """
-    Crée un diagramme de Gantt pour la solution hybride
+    Crée un diagramme de Gantt pour la solution hybride - AFFICHE TOUTES LES MACHINES
     """
     try:
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -355,28 +378,36 @@ def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_nam
         # Couleurs pour les jobs
         colors = plt.cm.Set3(np.linspace(0, 1, len(job_names)))
         
-        # Dessiner les tâches
+        # Dessiner les tâches pour TOUTES les machines (même vides)
         y_pos = 0
         machine_labels = []
         
-        for machine_idx, tasks in assigned_tasks.items():
+        # Créer la liste complète des machines dans l'ordre
+        all_machines = sorted(machine_to_stage.keys())
+        
+        for machine_idx in all_machines:
+            stage_idx = machine_to_stage[machine_idx]
+            stage_name = machine_names[stage_idx] if stage_idx < len(machine_names) else f"Étape {stage_idx + 1}"
+            
+            # Calculer le numéro de sous-machine dans l'étape 
+            machines_in_same_stage = [m for m, s in machine_to_stage.items() if s == stage_idx]
+            machines_in_same_stage.sort()
+            sub_machine_position = machines_in_same_stage.index(machine_idx)
+            
+            # Nomenclature M1, M1', M1''
+            if sub_machine_position == 0:
+                sub_name = ""
+            else:
+                sub_name = "'" * sub_machine_position
+            
+            machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
+            machine_labels.append(machine_label)
+            
+            # Dessiner les tâches de cette machine (peut être vide)
+            tasks = assigned_tasks.get(machine_idx, [])
+            print(f"DEBUG: Machine {machine_idx} ({machine_label}) a {len(tasks)} tâches: {tasks}")
+            
             if tasks:  # S'il y a des tâches sur cette machine
-                stage_idx = machine_to_stage.get(machine_idx, 0)
-                stage_name = machine_names[stage_idx] if stage_idx < len(machine_names) else f"Étape {stage_idx + 1}"
-                
-                # Calculer le numéro de sous-machine dans l'étape 
-                machines_in_same_stage = [m for m, s in machine_to_stage.items() if s == stage_idx]
-                machines_in_same_stage.sort()
-                sub_machine_position = machines_in_same_stage.index(machine_idx)
-                
-                # Nomenclature M1, M1', M1''
-                if sub_machine_position == 0:
-                    sub_name = ""
-                else:
-                    sub_name = "'" * sub_machine_position
-                
-                machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
-                machine_labels.append(machine_label)
                 
                 for task in tasks:
                     job_idx = task['job']
@@ -395,8 +426,13 @@ def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_nam
                     job_name = job_names[job_idx] if job_idx < len(job_names) else f"Job {job_idx}"
                     ax.text(start + duration/2, y_pos + 0.4, job_name,
                            ha='center', va='center', fontsize=8, fontweight='bold')
-                
-                y_pos += 1
+            else:
+                # Machine vide - dessiner une ligne vide avec texte "Vide"
+                ax.text(makespan/2, y_pos + 0.4, "Vide", 
+                       ha='center', va='center', fontsize=8, 
+                       style='italic', alpha=0.5)
+            
+            y_pos += 1
         
         # Configuration du graphique
         ax.set_xlim(0, makespan + 1)
