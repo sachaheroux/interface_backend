@@ -120,18 +120,43 @@ def _flowshop_hybride_solver(jobs_data, machines_per_stage, job_names=None, mach
     num_jobs = len(jobs_data)
     num_stages = len(machines_per_stage)
     
-    # Créer la matrice des durées
+    # Créer la matrice des durées basée sur machines_per_stage
     durations = []
     for job_idx, job in enumerate(jobs_data):
-        job_durations = []
-        for stage_idx in range(num_stages):
-            if stage_idx < len(job):
-                # Format: [(machine_id, duration), ...] donc prendre duration
-                duration = float(job[stage_idx][1])
-            else:
-                duration = 0.0
-            job_durations.append(duration)
-        durations.append(job_durations)
+        print(f"DEBUG: Job {job_idx} data = {job}")
+        
+        # Le nouveau format hybride envoie [duration1, duration2, duration3, ...] pour chaque machine physique
+        if isinstance(job[0], (int, float)):  # Nouveau format hybride
+            print(f"DEBUG: Format hybride détecté pour job {job_idx}")
+            job_durations_by_machine = job  # Durées par machine physique
+            
+            # Créer la matrice par étapes (pour compatibilité avec l'algorithme)
+            machine_counter = 0
+            job_durations = []
+            for stage_idx in range(num_stages):
+                # Pour chaque étape, récupérer les durées des machines de cette étape
+                stage_durations = []
+                for _ in range(machines_per_stage[stage_idx]):
+                    if machine_counter < len(job_durations_by_machine):
+                        stage_durations.append(float(job_durations_by_machine[machine_counter]))
+                        machine_counter += 1
+                    else:
+                        stage_durations.append(0.0)
+                
+                # Pour l'instant, utiliser la première durée de l'étape (à améliorer)
+                job_durations.append(stage_durations[0])
+                
+            durations.append(job_durations)
+        else:  # Format classique [(machine_id, duration), ...]
+            print(f"DEBUG: Format classique détecté pour job {job_idx}")
+            job_durations = []
+            for stage_idx in range(num_stages):
+                if stage_idx < len(job):
+                    duration = float(job[stage_idx][1])
+                else:
+                    duration = 0.0
+                job_durations.append(duration)
+            durations.append(job_durations)
     
     print(f"DEBUG: Durées créées = {durations}")
     
@@ -173,11 +198,32 @@ def _flowshop_hybride_solver(jobs_data, machines_per_stage, job_names=None, mach
     horizon = int(sum(sum(job_durations) for job_durations in durations) * 2)
     print(f"DEBUG: Horizon = {horizon}")
     
+    # Stocker les durées par machine physique pour utilisation réelle
+    machine_durations = {}  # {(job_idx, machine_idx): duration}
+    for job_idx, job in enumerate(jobs_data):
+        if isinstance(job[0], (int, float)):  # Format hybride avec durées par machine
+            machine_counter = 0
+            for stage_idx in range(num_stages):
+                for _ in range(machines_per_stage[stage_idx]):
+                    if machine_counter < len(job):
+                        machine_durations[(job_idx, machine_counter)] = int(float(job[machine_counter]))
+                    else:
+                        machine_durations[(job_idx, machine_counter)] = 0
+                    machine_counter += 1
+        else:  # Format classique - utiliser la même durée pour toutes les machines de l'étape
+            machine_counter = 0
+            for stage_idx in range(num_stages):
+                stage_duration = int(durations[job_idx][stage_idx])
+                for _ in range(machines_per_stage[stage_idx]):
+                    machine_durations[(job_idx, machine_counter)] = stage_duration
+                    machine_counter += 1
+    
+    print(f"DEBUG: Durées par machine physique = {machine_durations}")
+
     # Variables pour chaque job sur chaque machine
     for job_idx in range(num_jobs):
         for machine_idx in range(total_machines):
-            stage_idx = machine_to_stage[machine_idx]
-            duration = int(durations[job_idx][stage_idx])  # Convertir en entier pour OR-Tools
+            duration = machine_durations.get((job_idx, machine_idx), 0)  # Utiliser la durée spécifique
             
             # Variables de début et fin pour chaque tâche
             start_var = model.NewIntVar(0, horizon, f'start_j{job_idx}_m{machine_idx}')
@@ -217,9 +263,10 @@ def _flowshop_hybride_solver(jobs_data, machines_per_stage, job_names=None, mach
     for machine_idx in range(total_machines):
         intervals = []
         for job_idx in range(num_jobs):
+            duration = machine_durations.get((job_idx, machine_idx), 0)  # Utiliser la durée spécifique
             interval = model.NewOptionalIntervalVar(
                 task_starts[(job_idx, machine_idx)],
-                int(durations[job_idx][machine_to_stage[machine_idx]]),  # Convertir en entier
+                duration,
                 task_ends[(job_idx, machine_idx)],
                 tasks[(job_idx, machine_idx)],
                 f'interval_j{job_idx}_m{machine_idx}'
