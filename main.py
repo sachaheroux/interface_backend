@@ -385,9 +385,14 @@ def run_contraintes(request: ExtendedRequest):
             
             # Convertir les données par étapes vers le format d'affichage
             for stage_idx, tasks in result["machines"].items():
-                if stage_idx < len(machine_names_to_use):
-                    stage_name = machine_names_to_use[stage_idx]
-                    planification_hybride[stage_name] = tasks
+                try:
+                    stage_idx_int = int(stage_idx)
+                    if stage_idx_int < len(machine_names_to_use):
+                        stage_name = machine_names_to_use[stage_idx_int]
+                        planification_hybride[stage_name] = tasks
+                except (ValueError, TypeError):
+                    print(f"DEBUG: Clé non-numérique ignorée: {stage_idx}")
+                    continue
             
             # Créer les noms des machines physiques avec nomenclature M1, M1', M1''
             machines_per_stage = getattr(request, 'machines_per_stage', None)
@@ -426,7 +431,7 @@ def run_contraintes(request: ExtendedRequest):
                 "flowtime": result["flowtime"],
                 "retard_cumule": result["retard_cumule"],
                 "completion_times": result["completion_times"],
-                "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if int(m) < len(machine_names_to_use)},
+                "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if str(m).isdigit() and int(m) < len(machine_names_to_use)},
                 "raw_machines": result["machines"],
                 "gantt_url": result.get("gantt_url")
             }
@@ -449,20 +454,32 @@ def run_contraintes_gantt(request: ExtendedRequest):
         
         # Si c'est hybride et qu'un Gantt est déjà généré, le servir via l'URL
         if 'gantt_url' in result and result['gantt_url']:
-            # Rediriger vers l'URL du Gantt généré
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url=result['gantt_url'])
-        else:
-            # Mode classique : générer le Gantt ici
-            fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)",
-                                      unite=request.unite,
-                                      job_names=request.job_names,
-                                      machine_names=request.machine_names)
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png")
-            plt.close(fig)
-            buf.seek(0)
-            return StreamingResponse(buf, media_type="image/png")
+            # Servir le fichier directement
+            import os
+            gantt_path = result['gantt_url'].replace('/static/', '')
+            gantt_full_path = os.path.join(os.path.dirname(__file__), 'static', gantt_path)
+            if os.path.exists(gantt_full_path):
+                with open(gantt_full_path, 'rb') as f:
+                    return StreamingResponse(io.BytesIO(f.read()), media_type="image/png")
+            else:
+                print(f"DEBUG: Fichier Gantt non trouvé: {gantt_full_path}")
+        
+        # Mode classique ou fallback : générer le Gantt ici
+        if 'raw_machines' in result:
+            # Mode hybride sans Gantt généré - utiliser les données raw_machines
+            machines_data = {"machines": result['raw_machines']}
+            # Mode classique
+            machines_data = result
+        
+        fig = create_gantt_figure(machines_data, "Diagramme de Gantt - Contraintes (CP)",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

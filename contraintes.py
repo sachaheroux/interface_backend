@@ -357,7 +357,14 @@ def _extract_hybride_solution(solver, tasks, task_starts, task_ends, machine_to_
         if len(used_machines) > 1:
             print(f"    ✅ Parallélisme exploité!")
     
-    gantt_url = _create_hybride_gantt_chart(raw_machine_data, solution_makespan, job_names, machine_names, machine_to_stage)
+    try:
+        gantt_url = _create_hybride_gantt_chart(raw_machine_data, solution_makespan, job_names, machine_names, machine_to_stage)
+    except Exception as e:
+        print(f"DEBUG: Erreur génération Gantt: {e}")
+        gantt_url = None
+    
+    print(f"DEBUG: assigned_tasks final = {assigned_tasks}")
+    print(f"DEBUG: raw_machine_data final = {raw_machine_data}")
     
     return {
         'makespan': solution_makespan,
