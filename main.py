@@ -1,10 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from typing import List
 import matplotlib.pyplot as plt
 import io
 import base64
+import os
 
 import spt
 import edd
@@ -40,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Servir les fichiers statiques (images Gantt)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ----------- Gantt utilitaire -----------
 
@@ -364,15 +369,48 @@ def run_contraintes(request: ExtendedRequest):
         
         # Formatage unifié - adapter selon le type de résultat
         if 'raw_machines' in result:
-            # Mode hybride : utiliser les noms d'étapes pour l'affichage
+            # Mode hybride : créer des noms cohérents pour l'affichage
+            print(f"DEBUG: Mode hybride détecté dans main.py")
+            print(f"DEBUG: result['machines'] = {result['machines']}")
+            print(f"DEBUG: result['raw_machines'] = {result.get('raw_machines', {})}")
+            
+            # Créer la planification avec noms d'étapes
             machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
+            planification_hybride = {}
+            
+            # Convertir les données par étapes vers le format d'affichage
+            for stage_idx, tasks in result["machines"].items():
+                if stage_idx < len(machine_names_to_use):
+                    stage_name = machine_names_to_use[stage_idx]
+                    planification_hybride[stage_name] = tasks
+            
+            # Créer les noms des machines physiques avec nomenclature M1, M1', M1''
+            machines_per_stage = getattr(request, 'machines_per_stage', None)
+            if machines_per_stage:
+                raw_machines_named = {}
+                machine_counter = 0
+                for stage_idx, count in enumerate(machines_per_stage):
+                    stage_name = machine_names_to_use[stage_idx] if stage_idx < len(machine_names_to_use) else f"Étape {stage_idx + 1}"
+                    for sub_idx in range(count):
+                        if sub_idx == 0:
+                            sub_name = ""
+                        else:
+                            sub_name = "'" * sub_idx
+                        
+                        machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
+                        machine_tasks = result["raw_machines"].get(machine_counter, [])
+                        raw_machines_named[machine_label] = machine_tasks
+                        machine_counter += 1
+            else:
+                raw_machines_named = result["raw_machines"]
+            
             return {
                 "makespan": result["makespan"],
                 "flowtime": result["flowtime"],
                 "retard_cumule": result["retard_cumule"],
                 "completion_times": result["completion_times"],
-                "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if int(m) < len(machine_names_to_use)},
-                "raw_machines": result["raw_machines"],  # Données pour Gantt 
+                "planification": planification_hybride,
+                "raw_machines": raw_machines_named,  # Données pour Gantt avec bons noms
                 "gantt_url": result.get("gantt_url")
             }
         else:
@@ -394,16 +432,32 @@ def run_contraintes(request: ExtendedRequest):
 def run_contraintes_gantt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
-        result = contraintes.schedule(request.jobs_data, request.due_dates)
-        fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)",
-                                  unite=request.unite,
-                                  job_names=request.job_names,
-                                  machine_names=request.machine_names)
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png")
-        plt.close(fig)
-        buf.seek(0)
-        return StreamingResponse(buf, media_type="image/png")
+        
+        # Utiliser la fonction unifiée comme dans l'endpoint principal
+        result = contraintes.flowshop_contraintes(
+            request.jobs_data, 
+            request.due_dates,
+            request.job_names, 
+            request.machine_names,
+            getattr(request, 'machines_per_stage', None)
+        )
+        
+        # Si c'est hybride et qu'un Gantt est déjà généré, le servir via l'URL
+        if 'gantt_url' in result and result['gantt_url']:
+            # Rediriger vers l'URL du Gantt généré
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=result['gantt_url'])
+        else:
+            # Mode classique : générer le Gantt ici
+            fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)",
+                                      unite=request.unite,
+                                      job_names=request.job_names,
+                                      machine_names=request.machine_names)
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png")
+            plt.close(fig)
+            buf.seek(0)
+            return StreamingResponse(buf, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -110,6 +110,8 @@ def _flowshop_hybride_solver(jobs_data, machines_per_stage, job_names=None, mach
     """
     print(f"DEBUG: Données reçues - jobs_data: {jobs_data}")
     print(f"DEBUG: machines_per_stage: {machines_per_stage}")
+    print(f"DEBUG: job_names: {job_names}")
+    print(f"DEBUG: machine_names: {machine_names}")
     
     # Initialisation
     job_names = job_names or [f"Job {i}" for i in range(len(jobs_data))]
