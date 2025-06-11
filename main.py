@@ -351,16 +351,40 @@ def run_smith_gantt(request: SmithRequest):
 @app.post("/contraintes")
 def run_contraintes(request: ExtendedRequest):
     try:
-        validate_jobs_data(request.jobs_data, request.due_dates)
-        result = contraintes.schedule(request.jobs_data, request.due_dates)
-        return {
-            "makespan": result["makespan"],
-            "flowtime": result["flowtime"],
-            "retard_cumule": result["retard_cumule"],
-            "completion_times": result["completion_times"],
-            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()},
-            "raw_machines": result["machines"]  # Données brutes utilisées par le Gantt
-        }
+        # Vérifier si c'est une demande de flowshop hybride
+        if hasattr(request, 'stage_names') and hasattr(request, 'machines_per_stage'):
+            # Flowshop Hybride
+            from algorithms.flowshop_hybride import flowshop_hybride_contraintes
+            result = flowshop_hybride_contraintes(
+                request.jobs_data, 
+                request.machines_per_stage, 
+                request.job_names, 
+                request.stage_names, 
+                request.due_dates
+            )
+            
+            # Formatage pour flowshop hybride
+            return {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {request.stage_names[int(m)]: tasks for m, tasks in result["machines"].items()},
+                "raw_machines": result["machines"],
+                "gantt_url": result.get("gantt_url")
+            }
+        else:
+            # Flowshop classique
+            validate_jobs_data(request.jobs_data, request.due_dates)
+            result = contraintes.schedule(request.jobs_data, request.due_dates)
+            return {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()},
+                "raw_machines": result["machines"]  # Données brutes utilisées par le Gantt
+            }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
