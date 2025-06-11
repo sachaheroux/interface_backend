@@ -57,15 +57,24 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     fig, ax = plt.subplots(figsize=(10, 3))
     colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
 
-    for m_idx, (m, tasks) in enumerate(result["machines"].items()):
-        label = machine_names[int(m)] if machine_names else f"Machine {int(m)}"
-        for t in tasks:
-            job_idx = t["job"] if isinstance(t["job"], int) else job_names.index(t["job"])
-            job_label = job_names[job_idx] if job_names else f"J{job_idx}"
-            color = colors[job_idx % len(colors)]
-            ax.barh(label, t["duration"], left=t["start"], color=color)
-            ax.text(t["start"] + t["duration"] / 2, label, job_label,
-                    va="center", ha="center", color="white", fontsize=8)
+    # Trier les machines par index pour un affichage cohérent
+    sorted_machines = sorted(result["machines"].items(), key=lambda x: int(x[0]))
+    
+    for m_idx, (m, tasks) in enumerate(sorted_machines):
+        label = machine_names[int(m)] if machine_names and int(m) < len(machine_names) else f"Machine {int(m)}"
+        
+        if len(tasks) == 0:
+            # Machine vide : afficher une ligne vide mais visible
+            ax.barh(label, 0, left=0, color='lightgray', alpha=0.3, height=0.1)
+        else:
+            # Machine avec tâches : afficher normalement
+            for t in tasks:
+                job_idx = t["job"] if isinstance(t["job"], int) else job_names.index(t["job"])
+                job_label = job_names[job_idx] if job_names else f"J{job_idx}"
+                color = colors[job_idx % len(colors)]
+                ax.barh(label, t["duration"], left=t["start"], color=color)
+                ax.text(t["start"] + t["duration"] / 2, label, job_label,
+                        va="center", ha="center", color="white", fontsize=8)
 
     ax.set_xlabel(f"Temps ({unite})")
     ax.invert_yaxis()
@@ -429,7 +438,8 @@ def run_contraintes(request: ExtendedRequest):
                 "retard_cumule": result["retard_cumule"],
                 "completion_times": result["completion_times"],
                 "planification": planification_hybride,
-                "raw_machines": raw_machines_named,  # Données pour Gantt avec bons noms
+                "raw_machines": result["raw_machines"],  # Garder les clés numériques pour le frontend
+                "raw_machines_named": raw_machines_named,  # Noms pour affichage séparé
                 "gantt_url": result.get("gantt_url")
             }
         else:
@@ -475,18 +485,57 @@ def run_contraintes_gantt(request: ExtendedRequest):
         
         # Mode classique ou fallback : générer le Gantt ici
         if 'raw_machines' in result:
-            # Mode hybride sans Gantt généré - créer un mapping compatible
+            # Mode hybride sans Gantt généré - utiliser la fonction adaptée qui affiche toutes les machines
+            print(f"DEBUG: Fallback Gantt hybride avec raw_machines: {list(result['raw_machines'].keys())}")
+            # Créer un mapping pour les noms des machines
+            machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
+            
+            # Créer un machine_to_stage mapping basé sur machines_per_stage
+            machines_per_stage = getattr(request, 'machines_per_stage', None)
+            if machines_per_stage:
+                machine_to_stage = {}
+                machine_counter = 0
+                for stage_idx, count in enumerate(machines_per_stage):
+                    for _ in range(count):
+                        machine_to_stage[machine_counter] = stage_idx
+                        machine_counter += 1
+            else:
+                # Fallback si pas de machines_per_stage
+                machine_to_stage = {i: i for i in result['raw_machines'].keys()}
+            
+            # Utiliser create_gantt_figure avec adaptation pour afficher toutes les machines
             machines_data = {"machines": {}}
-            for machine_idx, tasks in result['raw_machines'].items():
-                machines_data["machines"][str(machine_idx)] = tasks
+            machine_names_hybride = []
+            
+            # Créer les noms des machines avec nomenclature M1, M1a, M1b
+            for machine_idx in sorted(machine_to_stage.keys()):
+                stage_idx = machine_to_stage[machine_idx]
+                stage_name = machine_names_to_use[stage_idx] if stage_idx < len(machine_names_to_use) else f"Étape {stage_idx + 1}"
+                
+                # Calculer la position de sous-machine
+                machines_in_same_stage = [m for m, s in machine_to_stage.items() if s == stage_idx]
+                machines_in_same_stage.sort()
+                sub_machine_position = machines_in_same_stage.index(machine_idx)
+                
+                if sub_machine_position == 0:
+                    sub_name = ""
+                else:
+                    sub_name = chr(ord('a') + sub_machine_position - 1)
+                
+                machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
+                machine_names_hybride.append(machine_label)
+                machines_data["machines"][str(machine_idx)] = result['raw_machines'].get(machine_idx, [])
         else:
             # Mode classique
             machines_data = result
         
+        # Utiliser les bons noms de machines selon le mode
+        machine_names_for_gantt = machine_names_hybride if ('raw_machines' in result and 'machine_names_hybride' in locals()) else request.machine_names
+        
         fig = create_gantt_figure(machines_data, "Diagramme de Gantt - Contraintes (CP)",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=machine_names_for_gantt)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)

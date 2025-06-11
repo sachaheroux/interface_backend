@@ -329,12 +329,14 @@ def _extract_hybride_solution(solver, tasks, task_starts, task_ends, machine_to_
                 total_tardiness += tardiness
     
     # Créer le diagramme de Gantt avec les vraies machines physiques
+    # Initialiser TOUTES les machines physiques (même celles sans tâches)
     raw_machine_data = {}
+    for machine_idx in machine_to_stage.keys():
+        raw_machine_data[machine_idx] = []  # Initialiser toutes les machines
+    
+    # Ajouter les tâches assignées
     for task in all_assigned_tasks:
         machine_idx = task['machine_idx']
-        if machine_idx not in raw_machine_data:
-            raw_machine_data[machine_idx] = []
-        
         raw_machine_data[machine_idx].append({
             'job': task['job'],
             'task': task['task'],
@@ -386,7 +388,7 @@ def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_nam
         fig, ax = plt.subplots(figsize=(10, 3))
         colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
         
-        # Créer la liste complète des machines dans l'ordre
+        # Créer la liste complète des machines dans l'ordre (TOUTES les machines physiques)
         all_machines = sorted(machine_to_stage.keys())
         
         for machine_idx in all_machines:
@@ -406,23 +408,29 @@ def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_nam
             
             machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
             
-            # Dessiner les tâches de cette machine (style standard barh)
+            # TOUJOURS afficher la ligne de la machine, même si elle n'a pas de tâches
             tasks = assigned_tasks.get(machine_idx, [])
             print(f"DEBUG: Machine {machine_idx} ({machine_label}) a {len(tasks)} tâches: {tasks}")
             
-            for task in tasks:
-                job_idx = task['job']
-                start = task['start']
-                duration = task['duration']
-                
-                # Style standard : barh avec couleurs prédéfinies
-                color = colors[job_idx % len(colors)]
-                ax.barh(machine_label, duration, left=start, color=color)
-                
-                # Texte blanc centré (style standard)
-                job_name = job_names[job_idx] if job_idx < len(job_names) else f"J{job_idx}"
-                ax.text(start + duration/2, machine_label, job_name,
-                       va="center", ha="center", color="white", fontsize=8)
+            if len(tasks) == 0:
+                # Machine vide : afficher une ligne vide mais visible
+                ax.barh(machine_label, 0, left=0, color='lightgray', alpha=0.3, height=0.1)
+                print(f"DEBUG: Machine {machine_idx} vide - ligne affichée")
+            else:
+                # Machine avec tâches : afficher normalement
+                for task in tasks:
+                    job_idx = task['job']
+                    start = task['start']
+                    duration = task['duration']
+                    
+                    # Style standard : barh avec couleurs prédéfinies
+                    color = colors[job_idx % len(colors)]
+                    ax.barh(machine_label, duration, left=start, color=color)
+                    
+                    # Texte blanc centré (style standard)
+                    job_name = job_names[job_idx] if job_idx < len(job_names) else f"J{job_idx}"
+                    ax.text(start + duration/2, machine_label, job_name,
+                           va="center", ha="center", color="white", fontsize=8)
         
         # Configuration standard
         ax.set_xlabel('Temps (unités)')
