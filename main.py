@@ -44,7 +44,12 @@ app.add_middleware(
 )
 
 # Servir les fichiers statiques (images Gantt)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+try:
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    os.makedirs(static_dir, exist_ok=True)  # Créer le dossier s'il n'existe pas
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+except Exception as e:
+    print(f"Attention: Impossible de configurer les fichiers statiques: {e}")
 
 # ----------- Gantt utilitaire -----------
 
