@@ -378,6 +378,7 @@ def run_contraintes(request: ExtendedRequest):
             print(f"DEBUG: Mode hybride détecté dans main.py")
             print(f"DEBUG: result['machines'] = {result['machines']}")
             print(f"DEBUG: result['raw_machines'] = {result.get('raw_machines', {})}")
+            print(f"DEBUG: machine_names_to_use = {machine_names_to_use}")
             
             # Créer la planification avec noms d'étapes
             machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
@@ -385,13 +386,18 @@ def run_contraintes(request: ExtendedRequest):
             
             # Convertir les données par étapes vers le format d'affichage
             for stage_idx, tasks in result["machines"].items():
+                print(f"DEBUG: Traitement stage_idx={stage_idx} (type: {type(stage_idx)}), tasks={tasks}")
                 try:
                     stage_idx_int = int(stage_idx)
+                    print(f"DEBUG: stage_idx_int={stage_idx_int}, len(machine_names_to_use)={len(machine_names_to_use)}")
                     if stage_idx_int < len(machine_names_to_use):
                         stage_name = machine_names_to_use[stage_idx_int]
                         planification_hybride[stage_name] = tasks
-                except (ValueError, TypeError):
-                    print(f"DEBUG: Clé non-numérique ignorée: {stage_idx}")
+                        print(f"DEBUG: Ajouté {stage_name} avec {len(tasks)} tâches")
+                    else:
+                        print(f"DEBUG: Index {stage_idx_int} hors limites")
+                except (ValueError, TypeError) as e:
+                    print(f"DEBUG: Erreur conversion clé {stage_idx}: {e}")
                     continue
             
             # Créer les noms des machines physiques avec nomenclature M1, M1', M1''
@@ -466,8 +472,11 @@ def run_contraintes_gantt(request: ExtendedRequest):
         
         # Mode classique ou fallback : générer le Gantt ici
         if 'raw_machines' in result:
-            # Mode hybride sans Gantt généré - utiliser les données raw_machines
-            machines_data = {"machines": result['raw_machines']}
+            # Mode hybride sans Gantt généré - créer un mapping compatible
+            machines_data = {"machines": {}}
+            for machine_idx, tasks in result['raw_machines'].items():
+                machines_data["machines"][str(machine_idx)] = tasks
+        else:
             # Mode classique
             machines_data = result
         

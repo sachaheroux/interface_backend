@@ -379,17 +379,12 @@ def _extract_hybride_solution(solver, tasks, task_starts, task_ends, machine_to_
 
 def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_names, machine_to_stage):
     """
-    Crée un diagramme de Gantt pour la solution hybride - AFFICHE TOUTES LES MACHINES
+    Crée un diagramme de Gantt pour la solution hybride - STYLE COHÉRENT avec les autres Gantts
     """
     try:
-        fig, ax = plt.subplots(figsize=(12, 8))
-        
-        # Couleurs pour les jobs
-        colors = plt.cm.Set3(np.linspace(0, 1, len(job_names)))
-        
-        # Dessiner les tâches pour TOUTES les machines (même vides)
-        y_pos = 0
-        machine_labels = []
+        # Style standard : même que create_gantt_figure
+        fig, ax = plt.subplots(figsize=(10, 3))
+        colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
         
         # Créer la liste complète des machines dans l'ordre
         all_machines = sorted(machine_to_stage.keys())
@@ -410,61 +405,29 @@ def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_nam
                 sub_name = "'" * sub_machine_position
             
             machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
-            machine_labels.append(machine_label)
             
-            # Dessiner les tâches de cette machine (peut être vide)
+            # Dessiner les tâches de cette machine (style standard barh)
             tasks = assigned_tasks.get(machine_idx, [])
             print(f"DEBUG: Machine {machine_idx} ({machine_label}) a {len(tasks)} tâches: {tasks}")
             
-            if tasks:  # S'il y a des tâches sur cette machine
+            for task in tasks:
+                job_idx = task['job']
+                start = task['start']
+                duration = task['duration']
                 
-                for task in tasks:
-                    job_idx = task['job']
-                    start = task['start']
-                    duration = task['duration']
-                    
-                    # Dessiner la barre
-                    rect = patches.Rectangle(
-                        (start, y_pos), duration, 0.8,
-                        linewidth=1, edgecolor='black',
-                        facecolor=colors[job_idx], alpha=0.7
-                    )
-                    ax.add_patch(rect)
-                    
-                    # Ajouter le nom du job
-                    job_name = job_names[job_idx] if job_idx < len(job_names) else f"Job {job_idx}"
-                    ax.text(start + duration/2, y_pos + 0.4, job_name,
-                           ha='center', va='center', fontsize=8, fontweight='bold')
-            else:
-                # Machine vide - dessiner une ligne vide avec texte "Vide"
-                ax.text(makespan/2, y_pos + 0.4, "Vide", 
-                       ha='center', va='center', fontsize=8, 
-                       style='italic', alpha=0.5)
-            
-            y_pos += 1
+                # Style standard : barh avec couleurs prédéfinies
+                color = colors[job_idx % len(colors)]
+                ax.barh(machine_label, duration, left=start, color=color)
+                
+                # Texte blanc centré (style standard)
+                job_name = job_names[job_idx] if job_idx < len(job_names) else f"J{job_idx}"
+                ax.text(start + duration/2, machine_label, job_name,
+                       va="center", ha="center", color="white", fontsize=8)
         
-        # Configuration du graphique
-        ax.set_xlim(0, makespan + 1)
-        ax.set_ylim(0, len(machine_labels))
-        ax.set_xlabel('Temps')
-        ax.set_ylabel('Machines')
-        ax.set_title(f'Diagramme de Gantt - Flowshop Hybride\nMakespan: {makespan}')
-        
-        # Étiquettes des machines
-        ax.set_yticks(range(len(machine_labels)))
-        ax.set_yticklabels(machine_labels)
-        
-        # Grille
-        ax.grid(True, alpha=0.3)
-        
-        # Légende
-        legend_elements = []
-        for job_idx in range(len(job_names)):
-            job_name = job_names[job_idx] if job_idx < len(job_names) else f"Job {job_idx}"
-            legend_elements.append(patches.Patch(color=colors[job_idx], label=job_name))
-        
-        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.15, 1))
-        
+        # Configuration standard
+        ax.set_xlabel('Temps (unités)')
+        ax.invert_yaxis()  # Machine 1 en haut (style standard)
+        ax.set_title(f'Diagramme de Gantt - Flowshop Hybride')
         plt.tight_layout()
         
         # Sauvegarder
