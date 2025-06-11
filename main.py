@@ -375,13 +375,11 @@ def run_contraintes(request: ExtendedRequest):
         # Formatage unifié - adapter selon le type de résultat
         if 'raw_machines' in result:
             # Mode hybride : créer des noms cohérents pour l'affichage
+            machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
             print(f"DEBUG: Mode hybride détecté dans main.py")
             print(f"DEBUG: result['machines'] = {result['machines']}")
             print(f"DEBUG: result['raw_machines'] = {result.get('raw_machines', {})}")
             print(f"DEBUG: machine_names_to_use = {machine_names_to_use}")
-            
-            # Créer la planification avec noms d'étapes
-            machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
             planification_hybride = {}
             
             # Convertir les données par étapes vers le format d'affichage
@@ -406,7 +404,11 @@ def run_contraintes(request: ExtendedRequest):
                 raw_machines_named = {}
                 machine_counter = 0
                 for stage_idx, count in enumerate(machines_per_stage):
-                    stage_name = machine_names_to_use[stage_idx] if stage_idx < len(machine_names_to_use) else f"Étape {stage_idx + 1}"
+                    # S'assurer que machine_names_to_use est définie et accessible
+                    if stage_idx < len(machine_names_to_use):
+                        stage_name = machine_names_to_use[stage_idx]
+                    else:
+                        stage_name = f"Étape {stage_idx + 1}"
                     for sub_idx in range(count):
                         if sub_idx == 0:
                             sub_name = ""
@@ -430,7 +432,7 @@ def run_contraintes(request: ExtendedRequest):
                 "gantt_url": result.get("gantt_url")
             }
         else:
-            # Mode classique : utiliser les noms de machines
+            # Mode classique : ajuster les noms pour les machines
             machine_names_to_use = request.machine_names or [f"Machine {i+1}" for i in range(len(request.jobs_data[0]))]
             return {
                 "makespan": result["makespan"],
