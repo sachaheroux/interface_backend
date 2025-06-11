@@ -358,7 +358,8 @@ def run_contraintes(request: ExtendedRequest):
             "flowtime": result["flowtime"],
             "retard_cumule": result["retard_cumule"],
             "completion_times": result["completion_times"],
-            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()}
+            "planification": {request.machine_names[int(m)]: tasks for m, tasks in result["machines"].items()},
+            "raw_machines": result["machines"]  # Données brutes utilisées par le Gantt
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
