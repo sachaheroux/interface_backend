@@ -398,11 +398,11 @@ def _create_hybride_gantt_chart(assigned_tasks, makespan, job_names, machine_nam
             machines_in_same_stage.sort()
             sub_machine_position = machines_in_same_stage.index(machine_idx)
             
-            # Nomenclature M1, M1', M1''
+            # Nomenclature M1, M1a, M1b, M1c...
             if sub_machine_position == 0:
                 sub_name = ""
             else:
-                sub_name = "'" * sub_machine_position
+                sub_name = chr(ord('a') + sub_machine_position - 1)
             
             machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
             

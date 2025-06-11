@@ -413,7 +413,8 @@ def run_contraintes(request: ExtendedRequest):
                         if sub_idx == 0:
                             sub_name = ""
                         else:
-                            sub_name = "'" * sub_idx
+                            # Utiliser des lettres : a, b, c, d, etc.
+                            sub_name = chr(ord('a') + sub_idx - 1)
                         
                         machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
                         machine_tasks = result["raw_machines"].get(machine_counter, [])
