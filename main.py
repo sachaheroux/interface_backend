@@ -25,7 +25,7 @@ import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
 import ligne_transfert_buffer_buzzacott
 import flowshop_machines
-from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
+from validation import validate_jobs_data, ExtendedRequest, FlexibleFlowshopRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMSSacADosRequest
 from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
@@ -464,29 +464,32 @@ def run_contraintes_agenda(request: ExtendedRequest):
 # ----------- Flowshop Machines Multiples -----------
 
 @app.post("/flowshop/machines_multiples")
-def run_flowshop_machines_multiples(request: ExtendedRequest):
+def run_flowshop_machines_multiples(request: FlexibleFlowshopRequest):
     try:
-        result = flowshop_machines.solve_flexible_flowshop(request.jobs_data, request.due_dates)
+        result = flowshop_machines.solve_flexible_flowshop(
+            request.jobs_data, 
+            request.due_dates,
+            machine_names=request.machine_names,
+            stage_names=request.stage_names,
+            machines_per_stage=request.machines_per_stage
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/flowshop/machines_multiples/gantt")
-def run_flowshop_machines_multiples_gantt(request: ExtendedRequest):
+def run_flowshop_machines_multiples_gantt(request: FlexibleFlowshopRequest):
     try:
-        result = flowshop_machines.solve_flexible_flowshop(request.jobs_data, request.due_dates)
-        # Formatage des résultats pour le diagramme de Gantt
-        machines_dict = {}
-        for machine_id, tasks in result.get("machines", {}).items():
-            machines_dict[machine_id] = tasks
-        
-        result_formatted = {"machines": machines_dict}
-        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Flowshop Machines Multiples",
-                                  unite=request.unite,
-                                  job_names=request.job_names,
-                                  machine_names=request.machine_names)
+        # Utiliser la fonction de création de Gantt intégrée
+        fig = flowshop_machines.create_gantt_chart(
+            request.jobs_data, 
+            request.due_dates,
+            machine_names=request.machine_names,
+            stage_names=request.stage_names,
+            machines_per_stage=request.machines_per_stage
+        )
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -494,7 +497,7 @@ def run_flowshop_machines_multiples_gantt(request: ExtendedRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/flowshop/machines_multiples/agenda")
-def run_flowshop_machines_multiples_agenda(request: ExtendedRequest):
+def run_flowshop_machines_multiples_agenda(request: FlexibleFlowshopRequest):
     try:
         result = flowshop_machines.solve_flexible_flowshop(request.jobs_data, request.due_dates)
         

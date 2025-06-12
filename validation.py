@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from pydantic import BaseModel
 
 # ----------- Validation des données de jobs -----------
@@ -53,8 +53,29 @@ class ExtendedRequest(BaseModel):
     unite: str = "heures"
     job_names: List[str]
     machine_names: Optional[List[str]] = None
+    
+    # Champs pour flowshop avec machines multiples
+    stage_names: Optional[List[str]] = None
+    machines_per_stage: Optional[List[int]] = None
 
+    # Champs avancés optionnels
+    agenda_start_datetime: Optional[str] = None
+    opening_hours: Optional[Dict[str, str]] = None
+    weekend_days: Optional[List[str]] = None
+    jours_feries: Optional[List[str]] = None
+    due_date_times: Optional[List[str]] = None
+    pauses: Optional[List[Dict[str, str]]] = None
 
+class FlexibleFlowshopRequest(BaseModel):
+    jobs_data: List[List[List[List[float]]]]  # job -> task -> alternatives -> [machine_id, duration]
+    due_dates: List[float]
+    unite: str = "heures"
+    job_names: List[str]
+    machine_names: Optional[List[str]] = None
+    
+    # Champs pour flowshop avec machines multiples
+    stage_names: Optional[List[str]] = None
+    machines_per_stage: Optional[List[int]] = None
 
     # Champs avancés optionnels
     agenda_start_datetime: Optional[str] = None
