@@ -17,49 +17,34 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
     """
     model = cp_model.CpModel()
 
-    # Mapper les machines pour l'affichage
+    # Mapper les machines
     machine_map = {}
     display_name_to_id = {}
 
-    # Créer le mapping des machines avec noms d'affichage
     for job in jobs_data:
         for task in job:
             if len(task) > 1:
-                # Machines alternatives - utiliser base + suffixes
                 base = task[0][0]
                 suffixes = 'abcdefghijklmnopqrstuvwxyz'
                 for i, (machine_id, _) in enumerate(sorted(task)):
-                    if machine_names and base < len(machine_names):
-                        name = machine_names[base] if i == 0 else f"{machine_names[base]}{suffixes[i]}"
-                    else:
-                        name = f"Machine {base}" if i == 0 else f"Machine {base}{suffixes[i]}"
+                    name = f"Machine {base}" if i == 0 else f"Machine {base}{suffixes[i]}"
                     machine_map[machine_id] = name
                     display_name_to_id[name] = machine_id
             else:
-                # Machine unique
                 machine_id, _ = task[0]
-                if machine_names and machine_id < len(machine_names):
-                    name = machine_names[machine_id]
-                else:
-                    name = f"Machine {machine_id}"
+                name = f"Machine {machine_id}"
                 machine_map[machine_id] = name
                 display_name_to_id[name] = machine_id
 
-    # Trier les noms d'affichage pour l'ordre correct
-    machine_display_names = sorted(display_name_to_id.keys(), 
-                                 key=lambda x: (int(''.join(filter(str.isdigit, x))), x))
-    
-    # Calculer l'horizon
+    machine_display_names = sorted(display_name_to_id.keys(), key=lambda x: (int(''.join(filter(str.isdigit, x))), x))
     horizon = sum(max(duration for _, duration in task) for job in jobs_data for task in job)
 
-    # Types de données
     task_type = collections.namedtuple('task_type', 'start end interval presence')
     assigned_task_type = collections.namedtuple('assigned_task_type', 'start job index duration machine')
 
     all_tasks = {}
     assigned_jobs = collections.defaultdict(list)
 
-    # Créer les variables pour chaque tâche
     for job_id, job in enumerate(jobs_data):
         for task_id, alternatives in enumerate(job):
             suffix = f'_{job_id}_{task_id}'
@@ -74,30 +59,25 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
                 interval = model.NewOptionalIntervalVar(start_var, duration, end_var, presence, 'interval' + alt_suffix)
                 presence_bools.append(presence)
                 interval_vars.append(interval)
-                assigned_jobs[machine_id].append((presence, start_var, job_id, task_id, duration))
+                assigned_jobs[machine_id].append((presence, start_var, job_id + 1, task_id + 1, duration))
 
-            # Contrainte : choisir exactement une machine pour cette tâche
             model.Add(sum(presence_bools) == 1)
-            all_tasks[job_id, task_id] = task_type(start=start_var, end=end_var, interval=interval_vars, presence=presence_bools)
+            all_tasks[job_id + 1, task_id + 1] = task_type(start=start_var, end=end_var, interval=interval_vars, presence=presence_bools)
 
-    # Contraintes de non-chevauchement pour chaque machine
     for machine_id, intervals in assigned_jobs.items():
         model.AddNoOverlap([
             model.NewOptionalIntervalVar(start, duration, model.NewIntVar(0, horizon, ''), presence, '')
             for presence, start, _, _, duration in intervals
         ])
 
-    # Contraintes de précédence dans chaque job
     for job_id, job in enumerate(jobs_data):
         for task_id in range(len(job) - 1):
-            model.Add(all_tasks[job_id, task_id + 1].start >= all_tasks[job_id, task_id].end)
+            model.Add(all_tasks[job_id + 1, task_id + 2].start >= all_tasks[job_id + 1, task_id + 1].end)
 
-    # Objectif : minimiser le makespan
     obj_var = model.NewIntVar(0, horizon, 'makespan')
-    model.AddMaxEquality(obj_var, [all_tasks[job_id, len(job) - 1].end for job_id in range(len(jobs_data))])
+    model.AddMaxEquality(obj_var, [all_tasks[job_id + 1, len(job)].end for job_id, job in enumerate(jobs_data)])
     model.Minimize(obj_var)
 
-    # Résoudre
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
 
@@ -114,19 +94,16 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
             "error": "Aucune solution trouvée"
         }
 
-    # Extraire la solution
     machine_to_tasks = collections.defaultdict(list)
     completion_times = [0] * len(jobs_data)
 
     for job_id, job in enumerate(jobs_data):
         for task_id, alternatives in enumerate(job):
             for alt_index, (machine_id, duration) in enumerate(alternatives):
-                if solver.BooleanValue(all_tasks[job_id, task_id].presence[alt_index]):
-                    start = solver.Value(all_tasks[job_id, task_id].start)
-                    machine_to_tasks[machine_id].append(
-                        assigned_task_type(start=start, job=job_id, index=task_id, 
-                                         duration=duration, machine=machine_id)
-                    )
+                if solver.BooleanValue(all_tasks[job_id + 1, task_id + 1].presence[alt_index]):
+                    start = solver.Value(all_tasks[job_id + 1, task_id + 1].start)
+                    machine_to_tasks[machine_id].append(assigned_task_type(
+                        start=start, job=job_id + 1, index=task_id + 1, duration=duration, machine=machine_id))
                     end = start + duration
                     completion_times[job_id] = max(completion_times[job_id], end)
 
@@ -152,7 +129,7 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
             for task in tasks
         ]
 
-    # Formater les temps d'achèvement (commencer les noms à 1)
+    # Formater les temps d'achèvement
     completion_times_formatted = {f"Job {i+1}": completion_times[i] for i in range(len(completion_times))}
 
     return {
@@ -191,23 +168,16 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
                 base = task[0][0]
                 suffixes = 'abcdefghijklmnopqrstuvwxyz'
                 for i, (machine_id, _) in enumerate(sorted(task)):
-                    if machine_names and base < len(machine_names):
-                        name = machine_names[base] if i == 0 else f"{machine_names[base]}{suffixes[i]}"
-                    else:
-                        name = f"Machine {base}" if i == 0 else f"Machine {base}{suffixes[i]}"
+                    name = f"Machine {base}" if i == 0 else f"Machine {base}{suffixes[i]}"
                     machine_map[machine_id] = name
                     display_name_to_id[name] = machine_id
             else:
                 machine_id, _ = task[0]
-                if machine_names and machine_id < len(machine_names):
-                    name = machine_names[machine_id]
-                else:
-                    name = f"Machine {machine_id}"
+                name = f"Machine {machine_id}"
                 machine_map[machine_id] = name
                 display_name_to_id[name] = machine_id
 
-    machine_display_names = sorted(display_name_to_id.keys(), 
-                                 key=lambda x: (int(''.join(filter(str.isdigit, x))), x))
+    machine_display_names = sorted(display_name_to_id.keys(), key=lambda x: (int(''.join(filter(str.isdigit, x))), x))
     
     # Créer le diagramme de Gantt
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -225,27 +195,26 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
         if machine_id in result["machines"]:
             for task in result["machines"][machine_id]:
                 ax.barh(y, task["duration"], left=task["start"], height=0.8, 
-                       color=colors[task["job"]], alpha=0.8, edgecolor='black', linewidth=0.5)
+                       color=colors[task["job"] - 1], alpha=0.8, edgecolor='black', linewidth=0.5)
                 ax.text(task["start"] + task["duration"] / 2, y, 
-                       f"Job {task['job']+1}\nOp {task['task']+1}",
+                       f"Job {task['job']}\nTask {task['task']}",
                        ha='center', va='center', fontsize=8, fontweight='bold')
 
     # Grouper les machines alternatives avec des rectangles
     base_to_group = collections.defaultdict(list)
     for label in machine_display_names:
-        # Extraire la base (sans suffixe alphabétique)
         base = label[:-1] if label[-1].isalpha() else label
         base_to_group[base].append(label)
 
     for group_labels in base_to_group.values():
         if len(group_labels) > 1:
             ys = [machine_display_names.index(lab) for lab in group_labels]
-            y_min = min(ys) - 0.45
-            height = len(ys) * 1.0 - 0.1
+            y_min = min(ys) - 0.4
+            height = len(ys) * 1.0 - 0.2
             ax.add_patch(
                 patches.Rectangle(
                     (0, y_min), result["makespan"], height,
-                    linewidth=2, edgecolor='red', facecolor='none', linestyle='--'
+                    linewidth=1, edgecolor='black', facecolor='none'
                 )
             )
 
@@ -262,17 +231,16 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
 # Exemple de test (pour usage en ligne de commande)
 if __name__ == '__main__':
     jobs_data = [
-        [[(0, 10)], [(1, 10)], [(2, 60), (21, 40), (22, 45)], [(3, 9)]],
-        [[(0, 10)], [(1, 10)], [(2, 30), (21, 45), (22, 30)], [(3, 18)]],
-        [[(0, 10)], [(1, 20)], [(2, 60), (21, 50), (22, 65)], [(3, 8)]],
-        [[(0, 10)], [(1, 10)], [(2, 30), (21, 30), (22, 25)], [(3, 12)]]
+        [[(11, 10), (12, 9), (13, 8)], [(21, 12), (22, 11)], [(31, 30)], [(41, 10)], [(51, 14)], [(61, 16)]],
+        [[(11, 11), (12, 10), (13, 9)], [(21, 10), (22, 9)], [(31, 35)], [(41, 12)], [(51, 15)], [(61, 17)]],
+        [[(11, 9), (12, 11), (13, 10)], [(21, 9), (22, 10)], [(31, 25)], [(41, 11)], [(51, 13)], [(61, 16)]],
+        [[(11, 12), (12, 8), (13, 7)], [(21, 11), (22, 12)], [(31, 27)], [(41, 9)], [(51, 14)], [(61, 15)]]
     ]
-    due_dates = [100, 100, 100, 100]
-    machine_names = ["M1", "M2", "M3", "M4"]
+    due_dates = [85, 90, 80, 95]
     
-    result = solve_flexible_flowshop(jobs_data, due_dates, machine_names)
+    result = solve_flexible_flowshop(jobs_data, due_dates)
     print("Résultat:", result)
     
     # Créer et afficher le diagramme de Gantt
-    fig = create_gantt_chart(jobs_data, due_dates, machine_names)
+    fig = create_gantt_chart(jobs_data, due_dates)
     plt.show()
