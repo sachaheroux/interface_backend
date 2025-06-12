@@ -24,6 +24,7 @@ import ligne_assemblage_pl
 import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
 import ligne_transfert_buffer_buzzacott
+import flowshop_machines
 from validation import validate_jobs_data, ExtendedRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMSSacADosRequest
@@ -381,79 +382,17 @@ def run_contraintes(request: ExtendedRequest):
             getattr(request, 'machines_per_stage', None)
         )
         
-        # Formatage unifié - adapter selon le type de résultat
-        if 'raw_machines' in result:
-            # Mode hybride : créer des noms cohérents pour l'affichage
-            machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
-            print(f"DEBUG: Mode hybride détecté dans main.py")
-            print(f"DEBUG: result['machines'] = {result['machines']}")
-            print(f"DEBUG: result['raw_machines'] = {result.get('raw_machines', {})}")
-            print(f"DEBUG: machine_names_to_use = {machine_names_to_use}")
-            planification_hybride = {}
-            
-            # Convertir les données par étapes vers le format d'affichage
-            for stage_idx, tasks in result["machines"].items():
-                print(f"DEBUG: Traitement stage_idx={stage_idx} (type: {type(stage_idx)}), tasks={tasks}")
-                try:
-                    stage_idx_int = int(stage_idx)
-                    print(f"DEBUG: stage_idx_int={stage_idx_int}, len(machine_names_to_use)={len(machine_names_to_use)}")
-                    if stage_idx_int < len(machine_names_to_use):
-                        stage_name = machine_names_to_use[stage_idx_int]
-                        planification_hybride[stage_name] = tasks
-                        print(f"DEBUG: Ajouté {stage_name} avec {len(tasks)} tâches")
-                    else:
-                        print(f"DEBUG: Index {stage_idx_int} hors limites")
-                except (ValueError, TypeError) as e:
-                    print(f"DEBUG: Erreur conversion clé {stage_idx}: {e}")
-                    continue
-            
-            # Créer les noms des machines physiques avec nomenclature M1, M1', M1''
-            machines_per_stage = getattr(request, 'machines_per_stage', None)
-            if machines_per_stage:
-                raw_machines_named = {}
-                machine_counter = 0
-                for stage_idx, count in enumerate(machines_per_stage):
-                    # S'assurer que machine_names_to_use est définie et accessible
-                    if stage_idx < len(machine_names_to_use):
-                        stage_name = machine_names_to_use[stage_idx]
-                    else:
-                        stage_name = f"Étape {stage_idx + 1}"
-                    for sub_idx in range(count):
-                        if sub_idx == 0:
-                            sub_name = ""
-                        else:
-                            # Utiliser des lettres : a, b, c, d, etc.
-                            sub_name = chr(ord('a') + sub_idx - 1)
-                        
-                        machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
-                        machine_tasks = result["raw_machines"].get(machine_counter, [])
-                        raw_machines_named[machine_label] = machine_tasks
-                        machine_counter += 1
-            else:
-                raw_machines_named = result["raw_machines"]
-            
-            return {
-                "makespan": result["makespan"],
-                "flowtime": result["flowtime"],
-                "retard_cumule": result["retard_cumule"],
-                "completion_times": result["completion_times"],
-                "planification": planification_hybride,
-                "raw_machines": result["raw_machines"],  # Garder les clés numériques pour le frontend
-                "raw_machines_named": raw_machines_named,  # Noms pour affichage séparé
-                "gantt_url": result.get("gantt_url")
-            }
-        else:
-            # Mode classique : ajuster les noms pour les machines
-            machine_names_to_use = request.machine_names or [f"Machine {i+1}" for i in range(len(request.jobs_data[0]))]
-            return {
-                "makespan": result["makespan"],
-                "flowtime": result["flowtime"],
-                "retard_cumule": result["retard_cumule"],
-                "completion_times": result["completion_times"],
-                "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if str(m).isdigit() and int(m) < len(machine_names_to_use)},
-                "raw_machines": result["machines"],
-                "gantt_url": result.get("gantt_url")
-            }
+        # Mode classique uniquement : ajuster les noms pour les machines
+        machine_names_to_use = request.machine_names or [f"Machine {i+1}" for i in range(len(request.jobs_data[0]))]
+        return {
+            "makespan": result["makespan"],
+            "flowtime": result["flowtime"],
+            "retard_cumule": result["retard_cumule"],
+            "completion_times": result["completion_times"],
+            "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if str(m).isdigit() and int(m) < len(machine_names_to_use)},
+            "raw_machines": result["machines"],
+            "gantt_url": result.get("gantt_url")
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -471,71 +410,13 @@ def run_contraintes_gantt(request: ExtendedRequest):
             getattr(request, 'machines_per_stage', None)
         )
         
-        # Si c'est hybride et qu'un Gantt est déjà généré, le servir via l'URL
-        if 'gantt_url' in result and result['gantt_url']:
-            # Servir le fichier directement
-            import os
-            gantt_path = result['gantt_url'].replace('/static/', '')
-            gantt_full_path = os.path.join(os.path.dirname(__file__), 'static', gantt_path)
-            if os.path.exists(gantt_full_path):
-                with open(gantt_full_path, 'rb') as f:
-                    return StreamingResponse(io.BytesIO(f.read()), media_type="image/png")
-            else:
-                print(f"DEBUG: Fichier Gantt non trouvé: {gantt_full_path}")
-        
-        # Mode classique ou fallback : générer le Gantt ici
-        if 'raw_machines' in result:
-            # Mode hybride sans Gantt généré - utiliser la fonction adaptée qui affiche toutes les machines
-            print(f"DEBUG: Fallback Gantt hybride avec raw_machines: {list(result['raw_machines'].keys())}")
-            # Créer un mapping pour les noms des machines
-            machine_names_to_use = request.machine_names or [f"Étape {i+1}" for i in range(len(request.jobs_data[0]))]
-            
-            # Créer un machine_to_stage mapping basé sur machines_per_stage
-            machines_per_stage = getattr(request, 'machines_per_stage', None)
-            if machines_per_stage:
-                machine_to_stage = {}
-                machine_counter = 0
-                for stage_idx, count in enumerate(machines_per_stage):
-                    for _ in range(count):
-                        machine_to_stage[machine_counter] = stage_idx
-                        machine_counter += 1
-            else:
-                # Fallback si pas de machines_per_stage
-                machine_to_stage = {i: i for i in result['raw_machines'].keys()}
-            
-            # Utiliser create_gantt_figure avec adaptation pour afficher toutes les machines
-            machines_data = {"machines": {}}
-            machine_names_hybride = []
-            
-            # Créer les noms des machines avec nomenclature M1, M1a, M1b
-            for machine_idx in sorted(machine_to_stage.keys()):
-                stage_idx = machine_to_stage[machine_idx]
-                stage_name = machine_names_to_use[stage_idx] if stage_idx < len(machine_names_to_use) else f"Étape {stage_idx + 1}"
-                
-                # Calculer la position de sous-machine
-                machines_in_same_stage = [m for m, s in machine_to_stage.items() if s == stage_idx]
-                machines_in_same_stage.sort()
-                sub_machine_position = machines_in_same_stage.index(machine_idx)
-                
-                if sub_machine_position == 0:
-                    sub_name = ""
-                else:
-                    sub_name = chr(ord('a') + sub_machine_position - 1)
-                
-                machine_label = f"{stage_name} - M{stage_idx + 1}{sub_name}"
-                machine_names_hybride.append(machine_label)
-                machines_data["machines"][str(machine_idx)] = result['raw_machines'].get(machine_idx, [])
-        else:
-            # Mode classique
-            machines_data = result
-        
-        # Utiliser les bons noms de machines selon le mode
-        machine_names_for_gantt = machine_names_hybride if ('raw_machines' in result and 'machine_names_hybride' in locals()) else request.machine_names
+        # Mode classique uniquement
+        machines_data = result
         
         fig = create_gantt_figure(machines_data, "Diagramme de Gantt - Contraintes (CP)",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=machine_names_for_gantt)
+                                  machine_names=request.machine_names)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -549,6 +430,73 @@ def run_contraintes_agenda(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         result = contraintes.schedule(request.jobs_data, request.due_dates)
+        
+        # Paramètres par défaut si pas fournis
+        start_datetime = getattr(request, 'agenda_start_datetime', None) or "2025-06-01T08:00:00"
+        opening_hours = getattr(request, 'opening_hours', None) or {"start": "08:00", "end": "17:00"}
+        weekend_days = getattr(request, 'weekend_days', None) or ["samedi", "dimanche"]
+        jours_feries = getattr(request, 'jours_feries', None) or []
+        due_date_times = getattr(request, 'due_date_times', None) or []
+        pauses = getattr(request, 'pauses', None) or [{"start": "12:00", "end": "13:00", "name": "Pause déjeuner"}]
+        
+        agenda_data = generer_agenda_json(
+            result, 
+            start_datetime, 
+            opening_hours, 
+            weekend_days, 
+            jours_feries, 
+            request.unite,
+            request.machine_names,
+            request.job_names,
+            pauses
+        )
+        
+        # Ajouter les informations de due dates
+        agenda_data["due_dates"] = {
+            request.job_names[i]: request.due_dates[i] for i in range(len(request.job_names))
+        }
+        agenda_data["due_date_times"] = due_date_times
+        
+        return agenda_data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ----------- Flowshop Machines Multiples -----------
+
+@app.post("/flowshop/machines_multiples")
+def run_flowshop_machines_multiples(request: ExtendedRequest):
+    try:
+        result = flowshop_machines.solve_flexible_flowshop(request.jobs_data, request.due_dates)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/flowshop/machines_multiples/gantt")
+def run_flowshop_machines_multiples_gantt(request: ExtendedRequest):
+    try:
+        result = flowshop_machines.solve_flexible_flowshop(request.jobs_data, request.due_dates)
+        # Formatage des résultats pour le diagramme de Gantt
+        machines_dict = {}
+        for machine_id, tasks in result.get("machines", {}).items():
+            machines_dict[machine_id] = tasks
+        
+        result_formatted = {"machines": machines_dict}
+        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Flowshop Machines Multiples",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/flowshop/machines_multiples/agenda")
+def run_flowshop_machines_multiples_agenda(request: ExtendedRequest):
+    try:
+        result = flowshop_machines.solve_flexible_flowshop(request.jobs_data, request.due_dates)
         
         # Paramètres par défaut si pas fournis
         start_datetime = getattr(request, 'agenda_start_datetime', None) or "2025-06-01T08:00:00"

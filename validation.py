@@ -54,9 +54,7 @@ class ExtendedRequest(BaseModel):
     job_names: List[str]
     machine_names: Optional[List[str]] = None
 
-    # Paramètres pour flowshop hybride
-    stage_names: Optional[List[str]] = None
-    machines_per_stage: Optional[List[int]] = None
+
 
     # Champs avancés optionnels
     agenda_start_datetime: Optional[str] = None
