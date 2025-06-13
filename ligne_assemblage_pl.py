@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import io
 import base64
 
-def pl_algorithm(task_tuples: List[tuple], cycle_time: float, unite: str = "minutes") -> Dict:
+def pl_algorithm(task_tuples: List[tuple], cycle_time: float, unite: str = "minutes", task_names: Optional[Dict[int, str]] = None) -> Dict:
     """
     Implémente l'algorithme PL (Programmation Linéaire) pour l'équilibrage optimal de ligne d'assemblage
     
@@ -102,7 +102,7 @@ def pl_algorithm(task_tuples: List[tuple], cycle_time: float, unite: str = "minu
     metrics = calculate_metrics(stations_result, utilization_rates, processing_times, C, unite, K_min, status)
     
     # Génération de la visualisation
-    chart_base64 = generate_pl_chart(stations_result, utilization_rates, processing_times, unite, status)
+    chart_base64 = generate_pl_chart(stations_result, utilization_rates, processing_times, unite, status, task_names)
     
     return {
         "stations": stations_result,
@@ -161,7 +161,7 @@ def calculate_metrics(stations: List[Dict], utilization_rates: List[float], proc
             "statut_optimisation": status
         }
 
-def generate_pl_chart(stations: List[Dict], utilization_rates: List[float], processing_times: Dict, unite: str, status: str) -> str:
+def generate_pl_chart(stations: List[Dict], utilization_rates: List[float], processing_times: Dict, unite: str, status: str, task_names: Optional[Dict[int, str]] = None) -> str:
     """Génère un graphique des stations et de leur utilisation pour l'algorithme PL"""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
     
@@ -184,25 +184,48 @@ def generate_pl_chart(stations: List[Dict], utilization_rates: List[float], proc
     ax1.axhline(y=80, color='green', linestyle='--', alpha=0.7, label='Cible 80%')
     ax1.legend()
     
-    # Graphique 2: Temps de traitement par station avec indication PL
-    station_times = []
-    station_details = []
+    # Graphique 2: Temps de traitement par station avec barres empilées
+    # Palette de couleurs pour les tâches
+    all_task_ids = list(processing_times.keys())
+    task_colors = plt.cm.Set3(range(len(all_task_ids)))
     
-    for station in stations:
-        total_time = sum(processing_times[task_id] for task_id in station['tasks'])
-        station_times.append(total_time)
-        task_names = ", ".join([f"T{task_id}" for task_id in station['tasks']])
-        station_details.append(f"{task_names}\n({total_time} {unite})")
+    # Préparer les données pour les barres empilées
+    station_data = {}
+    for i, station in enumerate(stations):
+        station_data[i] = {task_id: 0 for task_id in all_task_ids}
+        for task_id in station['tasks']:
+            station_data[i][task_id] = processing_times[task_id]
     
-    bars2 = ax2.bar(station_numbers, station_times, color='lightgreen', alpha=0.8)
+    # Créer les barres empilées
+    bottom_values = [0] * len(stations)
+    
+    for task_idx, task_id in enumerate(all_task_ids):
+        task_times = [station_data[i][task_id] for i in range(len(stations))]
+        
+        # Ne dessiner que si au moins une station a cette tâche
+        if any(time > 0 for time in task_times):
+            task_label = task_names.get(task_id, f'Tâche {task_id}') if task_names else f'Tâche {task_id}'
+            bars = ax2.bar(station_numbers, task_times, bottom=bottom_values, 
+                          color=task_colors[task_idx], alpha=0.8, 
+                          label=task_label)
+            
+            # Ajouter le texte sur chaque segment de barre
+            for i, (bar, time) in enumerate(zip(bars, task_times)):
+                if time > 0:  # Seulement si la tâche est présente dans cette station
+                    height = bar.get_height()
+                    task_display_name = task_names.get(task_id, f'T{task_id}') if task_names else f'T{task_id}'
+                    ax2.text(bar.get_x() + bar.get_width()/2., 
+                            bottom_values[i] + height/2,
+                            f'{task_display_name}\n{time} {unite}', 
+                            ha='center', va='center', 
+                            fontsize=8, fontweight='bold')
+            
+            # Mettre à jour les valeurs de base pour l'empilement
+            bottom_values = [bottom + time for bottom, time in zip(bottom_values, task_times)]
+    
     ax2.set_ylabel(f'Temps total ({unite})')
     ax2.set_title('Charge de travail par station - Solution Optimale PL')
-    
-    # Ajouter les détails des tâches
-    for bar, detail in zip(bars2, station_details):
-        height = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2., height/2,
-                detail, ha='center', va='center', fontsize=9, fontweight='bold')
+    ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
     plt.tight_layout()
     

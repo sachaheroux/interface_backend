@@ -684,12 +684,16 @@ def run_comsoal_analysis(request: dict):
         unite = request.get("unite", "minutes")
         seed = request.get("seed", None)
         
-        # Convertir les données de tâches en tuples
+        # Convertir les données de tâches en tuples et extraire les noms
         task_tuples = []
+        task_names = {}
         for task in tasks_data:
             task_id = task.get("id")
+            task_name = task.get("name", f"Tâche {task_id}")
             predecessors = task.get("predecessors")
             duration = task.get("duration")
+            
+            task_names[task_id] = task_name
             
             # Convertir predecessors None en None, sinon garder la valeur
             if predecessors is None or predecessors == [] or predecessors == "":
@@ -699,7 +703,7 @@ def run_comsoal_analysis(request: dict):
             
             task_tuples.append((task_id, predecessors, duration))
         
-        result = ligne_assemblage_comsoal.comsoal_algorithm(task_tuples, cycle_time, unite, seed)
+        result = ligne_assemblage_comsoal.comsoal_algorithm(task_tuples, cycle_time, unite, seed, task_names)
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -712,12 +716,16 @@ def run_comsoal_chart(request: dict):
         unite = request.get("unite", "minutes")
         seed = request.get("seed", None)
         
-        # Convertir les données de tâches en tuples
+        # Convertir les données de tâches en tuples et extraire les noms
         task_tuples = []
+        task_names = {}
         for task in tasks_data:
             task_id = task.get("id")
+            task_name = task.get("name", f"Tâche {task_id}")
             predecessors = task.get("predecessors")
             duration = task.get("duration")
+            
+            task_names[task_id] = task_name
             
             if predecessors is None or predecessors == [] or predecessors == "":
                 predecessors = None
@@ -726,7 +734,7 @@ def run_comsoal_chart(request: dict):
             
             task_tuples.append((task_id, predecessors, duration))
         
-        result = ligne_assemblage_comsoal.comsoal_algorithm(task_tuples, cycle_time, unite, seed)
+        result = ligne_assemblage_comsoal.comsoal_algorithm(task_tuples, cycle_time, unite, seed, task_names)
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(result["graphique"])
@@ -743,12 +751,16 @@ def run_lpt_analysis(request: dict):
         cycle_time = request.get("cycle_time", 70)
         unite = request.get("unite", "minutes")
         
-        # Convertir les données de tâches en tuples
+        # Convertir les données de tâches en tuples et extraire les noms
         task_tuples = []
+        task_names = {}
         for task in tasks_data:
             task_id = task.get("id")
+            task_name = task.get("name", f"Tâche {task_id}")
             predecessors = task.get("predecessors")
             duration = task.get("duration")
+            
+            task_names[task_id] = task_name
             
             # Convertir predecessors None en None, sinon garder la valeur
             if predecessors is None or predecessors == [] or predecessors == "":
@@ -758,7 +770,7 @@ def run_lpt_analysis(request: dict):
             
             task_tuples.append((task_id, predecessors, duration))
         
-        result = ligne_assemblage_lpt.lpt_algorithm(task_tuples, cycle_time, unite)
+        result = ligne_assemblage_lpt.lpt_algorithm(task_tuples, cycle_time, unite, task_names)
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -770,12 +782,16 @@ def run_lpt_chart(request: dict):
         cycle_time = request.get("cycle_time", 70)
         unite = request.get("unite", "minutes")
         
-        # Convertir les données de tâches en tuples
+        # Convertir les données de tâches en tuples et extraire les noms
         task_tuples = []
+        task_names = {}
         for task in tasks_data:
             task_id = task.get("id")
+            task_name = task.get("name", f"Tâche {task_id}")
             predecessors = task.get("predecessors")
             duration = task.get("duration")
+            
+            task_names[task_id] = task_name
             
             if predecessors is None or predecessors == [] or predecessors == "":
                 predecessors = None
@@ -784,7 +800,7 @@ def run_lpt_chart(request: dict):
             
             task_tuples.append((task_id, predecessors, duration))
         
-        result = ligne_assemblage_lpt.lpt_algorithm(task_tuples, cycle_time, unite)
+        result = ligne_assemblage_lpt.lpt_algorithm(task_tuples, cycle_time, unite, task_names)
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(result["graphique"])
@@ -801,12 +817,16 @@ def run_pl_analysis(request: dict):
         cycle_time = request.get("cycle_time", 70)
         unite = request.get("unite", "minutes")
         
-        # Convertir les données de tâches en tuples
+        # Convertir les données de tâches en tuples et extraire les noms
         task_tuples = []
+        task_names = {}
         for task in tasks_data:
             task_id = task.get("id")
+            task_name = task.get("name", f"Tâche {task_id}")
             predecessors = task.get("predecessors")
             duration = task.get("duration")
+            
+            task_names[task_id] = task_name
             
             # Convertir predecessors None en None, sinon garder la valeur
             if predecessors is None or predecessors == [] or predecessors == "":
@@ -816,7 +836,7 @@ def run_pl_analysis(request: dict):
             
             task_tuples.append((task_id, predecessors, duration))
         
-        result = ligne_assemblage_pl.pl_algorithm(task_tuples, cycle_time, unite)
+        result = ligne_assemblage_pl.pl_algorithm(task_tuples, cycle_time, unite, task_names)
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -828,12 +848,16 @@ def run_pl_chart(request: dict):
         cycle_time = request.get("cycle_time", 70)
         unite = request.get("unite", "minutes")
         
-        # Convertir les données de tâches en tuples
+        # Convertir les données de tâches en tuples et extraire les noms
         task_tuples = []
+        task_names = {}
         for task in tasks_data:
             task_id = task.get("id")
+            task_name = task.get("name", f"Tâche {task_id}")
             predecessors = task.get("predecessors")
             duration = task.get("duration")
+            
+            task_names[task_id] = task_name
             
             if predecessors is None or predecessors == [] or predecessors == "":
                 predecessors = None
@@ -842,7 +866,7 @@ def run_pl_chart(request: dict):
             
             task_tuples.append((task_id, predecessors, duration))
         
-        result = ligne_assemblage_pl.pl_algorithm(task_tuples, cycle_time, unite)
+        result = ligne_assemblage_pl.pl_algorithm(task_tuples, cycle_time, unite, task_names)
         
         # Décoder l'image base64 et la retourner comme réponse image
         image_data = base64.b64decode(result["graphique"])
