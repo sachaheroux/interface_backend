@@ -3,6 +3,20 @@ from ortools.sat.python import cp_model
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+def debug_jobs_data(jobs_data, due_dates):
+    """Debug function to trace data structure"""
+    print("=== DEBUG FLOWSHOP FLEXIBLE ===")
+    print(f"Nombre de jobs: {len(jobs_data)}")
+    print(f"Due dates: {due_dates}")
+    
+    for job_idx, job in enumerate(jobs_data):
+        print(f"Job {job_idx + 1}: {len(job)} étapes")
+        for task_idx, alternatives in enumerate(job):
+            print(f"  Étape {task_idx + 1}: {len(alternatives)} alternatives")
+            for alt_idx, (machine_id, duration) in enumerate(alternatives):
+                print(f"    Machine {machine_id}: durée {duration} (type: {type(duration)})")
+    print("=" * 35)
+
 def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_names=None, machines_per_stage=None):
     """
     Résout un problème de flowshop flexible avec machines multiples
@@ -15,6 +29,27 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
         stage_names: Noms des étapes (optionnel)  
         machines_per_stage: Nombre de machines par étape (optionnel)
     """
+    # Convertir toutes les durées en entiers pour OR-Tools
+    jobs_data_int = []
+    for job in jobs_data:
+        job_int = []
+        for task in job:
+            task_int = []
+            for machine_id, duration in task:
+                # Convertir en entier (arrondir si nécessaire)
+                duration_int = int(round(float(duration)))
+                machine_id_int = int(machine_id)
+                task_int.append([machine_id_int, duration_int])
+            job_int.append(task_int)
+        jobs_data_int.append(job_int)
+    
+    # Convertir les due_dates en entiers aussi
+    due_dates_int = [int(round(float(dd))) for dd in due_dates]
+    
+    # Utiliser les données converties
+    jobs_data = jobs_data_int
+    due_dates = due_dates_int
+    
     model = cp_model.CpModel()
 
     # Mapper les machines
