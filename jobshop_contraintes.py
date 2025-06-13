@@ -42,18 +42,29 @@ def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates
             model.Add(all_tasks[job_id, task_id + 1].start >= all_tasks[job_id, task_id].end)
 
     # Contraintes de temps de setup si spécifiées
-    if setup_times:
-        # Convertir les temps de setup en entiers
+    if setup_times and isinstance(setup_times, dict) and len(setup_times) > 0:
+        # Convertir les temps de setup en entiers (gère les floats et les zéros)
         setup_times_int = {}
         for machine_id, machine_setups in setup_times.items():
-            machine_id_int = int(machine_id)
-            setup_times_int[machine_id_int] = {}
-            for from_job, to_jobs in machine_setups.items():
-                from_job_int = int(from_job)
-                setup_times_int[machine_id_int][from_job_int] = {}
-                for to_job, setup_time in to_jobs.items():
-                    to_job_int = int(to_job)
-                    setup_times_int[machine_id_int][from_job_int][to_job_int] = int(round(float(setup_time)))
+            if machine_setups and isinstance(machine_setups, dict):
+                machine_id_int = int(machine_id)
+                setup_times_int[machine_id_int] = {}
+                for from_job, to_jobs in machine_setups.items():
+                    if to_jobs and isinstance(to_jobs, dict):
+                        from_job_int = int(from_job)
+                        setup_times_int[machine_id_int][from_job_int] = {}
+                        for to_job, setup_time in to_jobs.items():
+                            to_job_int = int(to_job)
+                            # Convertir en float d'abord, puis arrondir et convertir en int
+                            # Cela gère les strings, floats, et ints
+                            try:
+                                setup_time_float = float(setup_time) if setup_time is not None else 0.0
+                                setup_time_int = int(round(setup_time_float))
+                                # Accepter les temps de setup >= 0 (y compris zéro)
+                                setup_times_int[machine_id_int][from_job_int][to_job_int] = max(0, setup_time_int)
+                            except (ValueError, TypeError):
+                                # Si conversion impossible, utiliser 0
+                                setup_times_int[machine_id_int][from_job_int][to_job_int] = 0
         
         # Ajouter les contraintes de setup pour chaque machine
         for machine_id, tasks_on_machine in machine_to_tasks.items():
@@ -65,19 +76,15 @@ def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates
                             # Variable booléenne : task_i précède task_j sur cette machine
                             precedence_var = model.NewBoolVar(f'precedence_{machine_id}_{job_i}_{task_i}_{job_j}_{task_j}')
                             
-                            # Si task_i précède task_j, alors end_i + setup_time <= start_j
+                            # Si task_i précède task_j, alors start_j >= end_i + setup_time
                             setup_time = setup_times_int.get(machine_id, {}).get(job_i, {}).get(job_j, 0)
-                            if setup_time > 0:
-                                model.Add(start_j >= end_i + setup_time).OnlyEnforceIf(precedence_var)
-                            else:
-                                model.Add(start_j >= end_i).OnlyEnforceIf(precedence_var)
+                            # Toujours ajouter la contrainte, même si setup_time = 0
+                            model.Add(start_j >= end_i + setup_time).OnlyEnforceIf(precedence_var)
                             
-                            # Si task_j précède task_i, alors end_j + setup_time <= start_i
+                            # Si task_j précède task_i, alors start_i >= end_j + setup_time
                             setup_time_reverse = setup_times_int.get(machine_id, {}).get(job_j, {}).get(job_i, 0)
-                            if setup_time_reverse > 0:
-                                model.Add(start_i >= end_j + setup_time_reverse).OnlyEnforceIf(precedence_var.Not())
-                            else:
-                                model.Add(start_i >= end_j).OnlyEnforceIf(precedence_var.Not())
+                            # Toujours ajouter la contrainte, même si setup_time_reverse = 0
+                            model.Add(start_i >= end_j + setup_time_reverse).OnlyEnforceIf(precedence_var.Not())
 
     # Objectif : minimiser le makespan
     obj_var = model.NewIntVar(0, horizon, 'makespan')
