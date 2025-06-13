@@ -203,7 +203,8 @@ def run_jobshop_contraintes(request: JobshopSPTRequest):
             request.machine_names, 
             request.jobs_data, 
             request.due_dates,
-            request.setup_times
+            request.setup_times,
+            request.release_times
         )
         return result
     except Exception as e:
@@ -217,7 +218,8 @@ def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
             request.machine_names, 
             request.jobs_data, 
             request.due_dates,
-            request.setup_times
+            request.setup_times,
+            request.release_times
         )
         machines_dict = {}
         

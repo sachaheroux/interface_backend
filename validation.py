@@ -112,6 +112,7 @@ class JobshopSPTRequest(BaseModel):
     machine_names: List[str]
     unite: str = "heures"
     setup_times: Optional[Dict[int, Dict[int, Dict[int, float]]]] = None  # {machine_id: {from_job: {to_job: setup_time}}}
+    release_times: Optional[Union[List[float], Dict[int, float]]] = None  # Temps d'arrivée des jobs
 
 
 

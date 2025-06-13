@@ -1,13 +1,34 @@
 import collections
 from ortools.sat.python import cp_model
 
-def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates, setup_times=None):
+def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates, setup_times=None, release_times=None):
     # Convertir en int pour OR-Tools (qui ne supporte pas les floats)
     jobs_data = [
         [(int(machine), int(round(duration))) for machine, duration in job]
         for job in jobs_data
     ]
     due_dates = [int(round(d)) for d in due_dates]
+    
+    # Traiter les temps d'arrivée (release times)
+    release_times_int = [0] * len(jobs_data)  # Par défaut, tous les jobs arrivent à t=0
+    if release_times and isinstance(release_times, (list, dict)):
+        if isinstance(release_times, list):
+            # Si c'est une liste, utiliser directement
+            for i, release_time in enumerate(release_times):
+                if i < len(release_times_int):
+                    try:
+                        release_times_int[i] = max(0, int(round(float(release_time))))
+                    except (ValueError, TypeError):
+                        release_times_int[i] = 0
+        elif isinstance(release_times, dict):
+            # Si c'est un dictionnaire, mapper par index de job
+            for job_idx, release_time in release_times.items():
+                try:
+                    job_idx_int = int(job_idx)
+                    if 0 <= job_idx_int < len(release_times_int):
+                        release_times_int[job_idx_int] = max(0, int(round(float(release_time))))
+                except (ValueError, TypeError):
+                    continue
 
     machines_count = 1 + max(task[0] for job in jobs_data for task in job)
     all_machines = range(machines_count)
@@ -40,6 +61,12 @@ def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates
     for job_id, job in enumerate(jobs_data):
         for task_id in range(len(job) - 1):
             model.Add(all_tasks[job_id, task_id + 1].start >= all_tasks[job_id, task_id].end)
+    
+    # Contraintes de temps d'arrivée (release times)
+    for job_id, job in enumerate(jobs_data):
+        if len(job) > 0:  # S'assurer qu'il y a au moins une tâche
+            # La première tâche du job ne peut pas commencer avant son temps d'arrivée
+            model.Add(all_tasks[job_id, 0].start >= release_times_int[job_id])
 
     # Contraintes de temps de setup si spécifiées
     if setup_times and isinstance(setup_times, dict) and len(setup_times) > 0:
@@ -215,6 +242,7 @@ def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates
         "flowtime": flowtime,
         "retard_cumule": total_delay,
         "completion_times": {job_names[i]: completion_times[i] for i in range(len(jobs_data))},
+        "release_times": {job_names[i]: release_times_int[i] for i in range(len(jobs_data))},
         "schedule": schedule,
         "setup_schedule": setup_schedule  # Ajouter les temps de setup
     } 
