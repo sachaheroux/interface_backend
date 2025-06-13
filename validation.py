@@ -76,6 +76,7 @@ class FlexibleFlowshopRequest(BaseModel):
     # Champs pour flowshop avec machines multiples
     stage_names: Optional[List[str]] = None
     machines_per_stage: Optional[List[int]] = None
+    machine_priorities: Optional[Dict[int, int]] = None  # {machine_id: priority}
 
     # Champs avancés optionnels
     agenda_start_datetime: Optional[str] = None

@@ -471,7 +471,8 @@ def run_flowshop_machines_multiples(request: FlexibleFlowshopRequest):
             request.due_dates,
             machine_names=request.machine_names,
             stage_names=request.stage_names,
-            machines_per_stage=request.machines_per_stage
+            machines_per_stage=request.machines_per_stage,
+            machine_priorities=request.machine_priorities
         )
         return result
     except Exception as e:
@@ -486,7 +487,8 @@ def run_flowshop_machines_multiples_gantt(request: FlexibleFlowshopRequest):
             request.due_dates,
             machine_names=request.machine_names,
             stage_names=request.stage_names,
-            machines_per_stage=request.machines_per_stage
+            machines_per_stage=request.machines_per_stage,
+            machine_priorities=request.machine_priorities
         )
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
@@ -499,7 +501,14 @@ def run_flowshop_machines_multiples_gantt(request: FlexibleFlowshopRequest):
 @app.post("/flowshop/machines_multiples/agenda")
 def run_flowshop_machines_multiples_agenda(request: FlexibleFlowshopRequest):
     try:
-        result = flowshop_machines.solve_flexible_flowshop(request.jobs_data, request.due_dates)
+        result = flowshop_machines.solve_flexible_flowshop(
+            request.jobs_data, 
+            request.due_dates,
+            machine_names=request.machine_names,
+            stage_names=request.stage_names,
+            machines_per_stage=request.machines_per_stage,
+            machine_priorities=request.machine_priorities
+        )
         
         # Paramètres par défaut si pas fournis
         start_datetime = getattr(request, 'agenda_start_datetime', None) or "2025-06-01T08:00:00"

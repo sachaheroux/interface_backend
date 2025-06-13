@@ -17,7 +17,7 @@ def debug_jobs_data(jobs_data, due_dates):
                 print(f"    Machine {machine_id}: durée {duration} (type: {type(duration)})")
     print("=" * 35)
 
-def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_names=None, machines_per_stage=None):
+def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_names=None, machines_per_stage=None, machine_priorities=None):
     """
     Résout un problème de flowshop flexible avec machines multiples
     
@@ -28,6 +28,7 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
         machine_names: Noms des machines (optionnel)
         stage_names: Noms des étapes (optionnel)  
         machines_per_stage: Nombre de machines par étape (optionnel)
+        machine_priorities: Dictionnaire {machine_id: priority} où priority plus petit = plus prioritaire (optionnel)
     """
     # Convertir toutes les durées en entiers pour OR-Tools
     jobs_data_int = []
@@ -111,7 +112,35 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
 
     obj_var = model.NewIntVar(0, horizon, 'makespan')
     model.AddMaxEquality(obj_var, [all_tasks[job_id + 1, len(job)].end for job_id, job in enumerate(jobs_data)])
-    model.Minimize(obj_var)
+    
+    # Objectif principal : minimiser le makespan
+    # Objectif secondaire : favoriser les machines avec priorité plus élevée (valeur plus petite)
+    if machine_priorities:
+        # Calculer le terme de priorité
+        priority_penalty = []
+        for job_id, job in enumerate(jobs_data):
+            for task_id, alternatives in enumerate(job):
+                for alt_index, (machine_id, duration) in enumerate(alternatives):
+                    priority_value = machine_priorities.get(machine_id, 0)  # 0 = priorité neutre
+                    # La pénalité est proportionnelle à la priorité ET à la présence de la tâche
+                    penalty_var = model.NewIntVar(0, priority_value, f'penalty_{job_id}_{task_id}_{alt_index}')
+                    presence_var = all_tasks[job_id + 1, task_id + 1].presence[alt_index]
+                    model.Add(penalty_var == priority_value * presence_var)
+                    priority_penalty.append(penalty_var)
+        
+        # Objectif combiné : makespan principal + terme de priorité (très petit coefficient)
+        total_penalty = model.NewIntVar(0, sum(machine_priorities.values()) if machine_priorities else 0, 'total_penalty')
+        model.Add(total_penalty == sum(priority_penalty))
+        
+        # Le coefficient 0.001 assure que la priorité n'affecte pas le makespan optimal
+        # mais départage les solutions avec le même makespan
+        combined_objective = model.NewIntVar(0, horizon * 1000 + sum(machine_priorities.values()) if machine_priorities else horizon * 1000, 'combined_obj')
+        model.Add(combined_objective == obj_var * 1000 + total_penalty)
+        model.Minimize(combined_objective)
+        
+        print(f"Priorités des machines activées: {machine_priorities}")
+    else:
+        model.Minimize(obj_var)
 
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
@@ -142,7 +171,12 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
                     end = start + duration
                     completion_times[job_id] = max(completion_times[job_id], end)
 
-    makespan = solver.ObjectiveValue()
+    # Récupérer le makespan réel (pas l'objectif combiné)
+    if machine_priorities:
+        makespan = solver.Value(obj_var)  # Le vrai makespan, pas l'objectif combiné
+    else:
+        makespan = solver.ObjectiveValue()
+    
     flowtime = sum(completion_times) / len(completion_times)
     total_delay = sum(max(0, ct - dd) for ct, dd in zip(completion_times, due_dates))
 
@@ -179,12 +213,12 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
     }
 
 
-def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=None, machines_per_stage=None):
+def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=None, machines_per_stage=None, machine_priorities=None):
     """
     Crée un diagramme de Gantt pour la solution du flowshop flexible
     """
     # Résoudre d'abord le problème
-    result = solve_flexible_flowshop(jobs_data, due_dates, machine_names, stage_names, machines_per_stage)
+    result = solve_flexible_flowshop(jobs_data, due_dates, machine_names, stage_names, machines_per_stage, machine_priorities)
     
     if result["status"] == "no_solution":
         # Créer un graphique vide en cas de pas de solution
