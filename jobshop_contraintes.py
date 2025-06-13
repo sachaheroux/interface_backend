@@ -102,15 +102,27 @@ def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates
 
     # Préparer les résultats
     schedule = []
+    setup_schedule = []  # Pour les temps de setup
     completion_times = [0] * len(jobs_data)
     total_delay = 0
 
+    # Collecter toutes les tâches avec leurs temps de début/fin
+    all_task_times = {}
     for job_id, job in enumerate(jobs_data):
         for task_id, task in enumerate(job):
             machine = task[0]
             duration = task[1]
             start_time = solver.Value(all_tasks[job_id, task_id].start)
             end_time = solver.Value(all_tasks[job_id, task_id].end)
+            
+            all_task_times[(job_id, task_id)] = {
+                "job_id": job_id,
+                "task_id": task_id,
+                "machine": machine,
+                "start": start_time,
+                "end": end_time,
+                "duration": duration
+            }
             
             schedule.append({
                 "job": job_names[job_id],
@@ -122,6 +134,73 @@ def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates
             })
             
             completion_times[job_id] = max(completion_times[job_id], end_time)
+
+    # Calculer les temps de setup réels si spécifiés
+    if setup_times and isinstance(setup_times, dict) and len(setup_times) > 0:
+        # Grouper les tâches par machine
+        tasks_by_machine = {}
+        for (job_id, task_id), task_info in all_task_times.items():
+            machine = task_info["machine"]
+            if machine not in tasks_by_machine:
+                tasks_by_machine[machine] = []
+            tasks_by_machine[machine].append(task_info)
+        
+        # Pour chaque machine, trier les tâches par temps de début et calculer les setups
+        for machine, tasks in tasks_by_machine.items():
+            if len(tasks) > 1:
+                # Trier par temps de début
+                tasks.sort(key=lambda x: x["start"])
+                
+                # Calculer les temps de setup entre tâches consécutives
+                for i in range(len(tasks) - 1):
+                    current_task = tasks[i]
+                    next_task = tasks[i + 1]
+                    
+                    # Vérifier s'il y a un temps de setup configuré
+                    setup_time_configured = 0
+                    
+                    # Convertir les clés en int pour la comparaison
+                    machine_key = int(machine)
+                    current_job_key = int(current_task["job_id"])
+                    next_job_key = int(next_task["job_id"])
+                    
+                    # Chercher dans setup_times avec différents types de clés
+                    for m_key in [machine_key, str(machine_key)]:
+                        if m_key in setup_times:
+                            machine_setups = setup_times[m_key]
+                            for from_key in [current_job_key, str(current_job_key)]:
+                                if from_key in machine_setups:
+                                    from_setups = machine_setups[from_key]
+                                    for to_key in [next_job_key, str(next_job_key)]:
+                                        if to_key in from_setups:
+                                            setup_time_configured = from_setups[to_key]
+                                            break
+                                    if setup_time_configured > 0:
+                                        break
+                            if setup_time_configured > 0:
+                                break
+                    
+                    # Convertir en int si nécessaire
+                    try:
+                        setup_time_configured = int(round(float(setup_time_configured)))
+                    except:
+                        setup_time_configured = 0
+                    
+                    # Si il y a un gap entre les tâches et un setup configuré
+                    gap_time = next_task["start"] - current_task["end"]
+                    if gap_time > 0 and setup_time_configured > 0:
+                        # Le temps de setup réel est le minimum entre le gap et le setup configuré
+                        actual_setup_time = min(gap_time, setup_time_configured)
+                        
+                        setup_schedule.append({
+                            "machine": machine_names[machine],
+                            "from_job": job_names[current_task["job_id"]],
+                            "to_job": job_names[next_task["job_id"]],
+                            "start": current_task["end"],
+                            "end": current_task["end"] + actual_setup_time,
+                            "duration": actual_setup_time,
+                            "type": "setup"
+                        })
 
     # Calculer les métriques
     makespan = solver.ObjectiveValue()
@@ -136,5 +215,6 @@ def planifier_jobshop_contraintes(job_names, machine_names, jobs_data, due_dates
         "flowtime": flowtime,
         "retard_cumule": total_delay,
         "completion_times": {job_names[i]: completion_times[i] for i in range(len(jobs_data))},
-        "schedule": schedule
+        "schedule": schedule,
+        "setup_schedule": setup_schedule  # Ajouter les temps de setup
     } 

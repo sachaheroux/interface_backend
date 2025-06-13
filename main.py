@@ -83,6 +83,46 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     plt.tight_layout()
     return fig
 
+def create_gantt_figure_with_setup(result, title: str, unite="heures", job_names=None, machine_names=None):
+    """
+    Fonction de Gantt spécialisée pour afficher les temps de setup en rouge pâle
+    """
+    fig, ax = plt.subplots(figsize=(12, 4))
+    colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
+    setup_color = "#ffcccb"  # Rouge pâle pour les temps de setup
+
+    # Trier les machines par index pour un affichage cohérent
+    sorted_machines = sorted(result["machines"].items(), key=lambda x: int(x[0]))
+    
+    for m_idx, (m, tasks) in enumerate(sorted_machines):
+        label = machine_names[int(m)] if machine_names and int(m) < len(machine_names) else f"Machine {int(m)}"
+        
+        if len(tasks) == 0:
+            # Machine vide : afficher une ligne vide mais visible
+            ax.barh(label, 0, left=0, color='lightgray', alpha=0.3, height=0.1)
+        else:
+            # Machine avec tâches : afficher normalement
+            for t in tasks:
+                if t.get("type") == "setup":
+                    # Temps de setup : rouge pâle
+                    ax.barh(label, t["duration"], left=t["start"], color=setup_color, alpha=0.8)
+                    ax.text(t["start"] + t["duration"] / 2, label, "Setup",
+                            va="center", ha="center", color="darkred", fontsize=7, weight="bold")
+                else:
+                    # Tâche normale : couleur selon le job
+                    job_idx = t["job"] if isinstance(t["job"], int) else job_names.index(t["job"])
+                    job_label = job_names[job_idx] if job_names else f"J{job_idx}"
+                    color = colors[job_idx % len(colors)]
+                    ax.barh(label, t["duration"], left=t["start"], color=color)
+                    ax.text(t["start"] + t["duration"] / 2, label, job_label,
+                            va="center", ha="center", color="white", fontsize=8)
+
+    ax.set_xlabel(f"Temps ({unite})")
+    ax.invert_yaxis()
+    ax.set_title(title)
+    plt.tight_layout()
+    return fig
+
 # ----------- Jobshop SPT -----------
 
 @app.post("/jobshop/spt")
@@ -180,18 +220,39 @@ def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
             request.setup_times
         )
         machines_dict = {}
+        
+        # Ajouter les tâches normales
         for t in result["schedule"]:
             m_idx = request.machine_names.index(t["machine"])
             machines_dict.setdefault(m_idx, []).append({
                 "job": t["job"],
                 "start": t["start"],
-                "duration": t["duration"]
+                "duration": t["duration"],
+                "type": "task"
             })
+        
+        # Ajouter les temps de setup s'ils existent
+        if "setup_schedule" in result and result["setup_schedule"]:
+            for setup in result["setup_schedule"]:
+                m_idx = request.machine_names.index(setup["machine"])
+                machines_dict.setdefault(m_idx, []).append({
+                    "job": f"{setup['from_job']}→{setup['to_job']}",
+                    "start": setup["start"],
+                    "duration": setup["duration"],
+                    "type": "setup"
+                })
+        
+        # Trier les tâches par temps de début pour chaque machine
+        for m_idx in machines_dict:
+            machines_dict[m_idx].sort(key=lambda x: x["start"])
+        
         result_formatted = {"machines": machines_dict}
-        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (CP)",
-                                  unite=request.unite,
-                                  job_names=request.job_names,
-                                  machine_names=request.machine_names)
+        
+        # Utiliser la fonction Gantt avec support des temps de setup
+        fig = create_gantt_figure_with_setup(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (CP)",
+                                           unite=request.unite,
+                                           job_names=request.job_names,
+                                           machine_names=request.machine_names)
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
