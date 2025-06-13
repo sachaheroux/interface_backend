@@ -115,30 +115,36 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
     
     # Objectif principal : minimiser le makespan
     # Objectif secondaire : favoriser les machines avec priorité plus élevée (valeur plus petite)
-    if machine_priorities:
-        # Calculer le terme de priorité
+    if machine_priorities and len(machine_priorities) > 0:
+        # Calculer le terme de priorité de manière plus simple
         priority_penalty = []
+        max_priority = max(machine_priorities.values()) if machine_priorities else 1
+        
         for job_id, job in enumerate(jobs_data):
             for task_id, alternatives in enumerate(job):
                 for alt_index, (machine_id, duration) in enumerate(alternatives):
-                    priority_value = machine_priorities.get(machine_id, 0)  # 0 = priorité neutre
-                    # La pénalité est proportionnelle à la priorité ET à la présence de la tâche
-                    penalty_var = model.NewIntVar(0, priority_value, f'penalty_{job_id}_{task_id}_{alt_index}')
-                    presence_var = all_tasks[job_id + 1, task_id + 1].presence[alt_index]
-                    model.Add(penalty_var == priority_value * presence_var)
-                    priority_penalty.append(penalty_var)
+                    priority_value = machine_priorities.get(machine_id, max_priority + 1)  # Si pas de priorité, donner la plus faible
+                    if priority_value > 0:  # Seulement si priorité valide
+                        # La pénalité est proportionnelle à la priorité ET à la présence de la tâche
+                        penalty_var = model.NewIntVar(0, priority_value * 100, f'penalty_{job_id}_{task_id}_{alt_index}')
+                        presence_var = all_tasks[job_id + 1, task_id + 1].presence[alt_index]
+                        model.Add(penalty_var == priority_value * presence_var)
+                        priority_penalty.append(penalty_var)
         
-        # Objectif combiné : makespan principal + terme de priorité (très petit coefficient)
-        total_penalty = model.NewIntVar(0, sum(machine_priorities.values()) if machine_priorities else 0, 'total_penalty')
-        model.Add(total_penalty == sum(priority_penalty))
-        
-        # Le coefficient 0.001 assure que la priorité n'affecte pas le makespan optimal
-        # mais départage les solutions avec le même makespan
-        combined_objective = model.NewIntVar(0, horizon * 1000 + sum(machine_priorities.values()) if machine_priorities else horizon * 1000, 'combined_obj')
-        model.Add(combined_objective == obj_var * 1000 + total_penalty)
-        model.Minimize(combined_objective)
-        
-        print(f"Priorités des machines activées: {machine_priorities}")
+        if priority_penalty:  # Seulement si on a des pénalités
+            # Objectif combiné : makespan principal + terme de priorité (très petit coefficient)
+            total_penalty = model.NewIntVar(0, max_priority * 100 * len(priority_penalty), 'total_penalty')
+            model.Add(total_penalty == sum(priority_penalty))
+            
+            # Le coefficient 10000 assure que le makespan reste dominant
+            combined_objective = model.NewIntVar(0, horizon * 10000 + max_priority * 100 * len(priority_penalty), 'combined_obj')
+            model.Add(combined_objective == obj_var * 10000 + total_penalty)
+            model.Minimize(combined_objective)
+            
+            print(f"Priorités des machines activées: {machine_priorities}")
+        else:
+            model.Minimize(obj_var)
+            print("Pas de priorités valides, utilisation de l'objectif standard")
     else:
         model.Minimize(obj_var)
 
