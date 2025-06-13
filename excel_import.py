@@ -2,6 +2,8 @@ import pandas as pd
 import io
 from typing import Dict, List, Tuple, Optional
 from fastapi import HTTPException
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 
 def parse_flowshop_excel(file_content: bytes) -> Dict:
     """
@@ -194,55 +196,36 @@ def create_flowshop_template(template_type: str = "exemple") -> bytes:
     Returns:
         bytes: Contenu du fichier Excel
     """
-    # Créer un writer Excel
+    # Créer un BytesIO pour le fichier Excel
     output = io.BytesIO()
     
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        
-        # Onglet Instructions
-        create_instructions_sheet(writer)
-        
-        # Onglet Machines
-        if template_type == "exemple":
-            machines_data = {
-                'ID_Machine': [0, 1, 2],
-                'Nom_Machine': ['Découpe', 'Assemblage', 'Finition']
-            }
-        else:
-            machines_data = {
-                'ID_Machine': [0, 1, 2],
-                'Nom_Machine': ['[À remplir]', '[À remplir]', '[À remplir]']
-            }
-        
-        machines_df = pd.DataFrame(machines_data)
-        machines_df.to_excel(writer, sheet_name='Machines', index=False)
-        
-        # Onglet Jobs
-        if template_type == "exemple":
-            jobs_data = {
-                'Nom_Job': ['Job_A', 'Job_B', 'Job_C'],
-                'Date_Echeance': [12, 15, 18],
-                'Machine_0': [4, 3, 5],
-                'Machine_1': [2, 4, 2],
-                'Machine_2': [3, 2, 4]
-            }
-        else:
-            jobs_data = {
-                'Nom_Job': ['[À remplir]', '[À remplir]', '[À remplir]'],
-                'Date_Echeance': ['[À remplir]', '[À remplir]', '[À remplir]'],
-                'Machine_0': ['[À remplir]', '[À remplir]', '[À remplir]'],
-                'Machine_1': ['[À remplir]', '[À remplir]', '[À remplir]'],
-                'Machine_2': ['[À remplir]', '[À remplir]', '[À remplir]']
-            }
-        
-        jobs_df = pd.DataFrame(jobs_data)
-        jobs_df.to_excel(writer, sheet_name='Jobs', index=False)
+    # Préparer les données
+    if template_type == "exemple":
+        machines_data = {
+            'ID_Machine': [0, 1, 2],
+            'Nom_Machine': ['Découpe', 'Assemblage', 'Finition']
+        }
+        jobs_data = {
+            'Nom_Job': ['Job_A', 'Job_B', 'Job_C'],
+            'Date_Echeance': [12, 15, 18],
+            'Machine_0': [4, 3, 5],
+            'Machine_1': [2, 4, 2],
+            'Machine_2': [3, 2, 4]
+        }
+    else:
+        machines_data = {
+            'ID_Machine': [0, 1, 2],
+            'Nom_Machine': ['[À remplir]', '[À remplir]', '[À remplir]']
+        }
+        jobs_data = {
+            'Nom_Job': ['[À remplir]', '[À remplir]', '[À remplir]'],
+            'Date_Echeance': ['[À remplir]', '[À remplir]', '[À remplir]'],
+            'Machine_0': ['[À remplir]', '[À remplir]', '[À remplir]'],
+            'Machine_1': ['[À remplir]', '[À remplir]', '[À remplir]'],
+            'Machine_2': ['[À remplir]', '[À remplir]', '[À remplir]']
+        }
     
-    output.seek(0)
-    return output.getvalue()
-
-def create_instructions_sheet(writer):
-    """Crée l'onglet d'instructions"""
+    # Instructions
     instructions_data = {
         'Section': [
             'INSTRUCTIONS GÉNÉRALES',
@@ -280,5 +263,18 @@ def create_instructions_sheet(writer):
         ]
     }
     
+    # Créer les DataFrames
+    machines_df = pd.DataFrame(machines_data)
+    jobs_df = pd.DataFrame(jobs_data)
     instructions_df = pd.DataFrame(instructions_data)
-    instructions_df.to_excel(writer, sheet_name='Instructions', index=False) 
+    
+    # Écrire dans le fichier Excel avec pandas
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        machines_df.to_excel(writer, sheet_name='Machines', index=False)
+        jobs_df.to_excel(writer, sheet_name='Jobs', index=False)
+        instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
+    
+    output.seek(0)
+    return output.getvalue()
+
+ 
