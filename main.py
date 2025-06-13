@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +17,7 @@ import contraintes
 import jobshop_spt
 import jobshop_edd
 import jobshop_contraintes
+import excel_import
 import ligne_assemblage_precedence
 import ligne_assemblage_comsoal
 import ligne_assemblage_lpt
@@ -1167,6 +1168,140 @@ def run_fms_lots_chargement_heuristique_chart(request: dict):
     except Exception as e:
         print(f"Error in FMS lots chargement heuristique chart: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ----------- Import Excel -----------
+
+@app.post("/flowshop/import-excel")
+async def import_flowshop_excel(file: UploadFile = File(...)):
+    """Import de données flowshop depuis un fichier Excel"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire le contenu du fichier
+        file_content = await file.read()
+        
+        # Parser le fichier Excel
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé avec succès",
+            "data": parsed_data
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import: {str(e)}")
+
+@app.get("/flowshop/template/{template_type}")
+async def download_flowshop_template(template_type: str):
+    """Téléchargement des templates Excel pour flowshop"""
+    try:
+        if template_type not in ["exemple", "vide"]:
+            raise HTTPException(status_code=400, detail="Type de template invalide. Utilisez 'exemple' ou 'vide'")
+        
+        # Générer le template
+        template_content = excel_import.create_flowshop_template(template_type)
+        
+        # Nom du fichier
+        filename = f"Template_Flowshop_{template_type.capitalize()}.xlsx"
+        
+        # Créer la réponse
+        response = StreamingResponse(
+            io.BytesIO(template_content),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+        return response
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du template: {str(e)}")
+
+@app.post("/spt/import-excel")
+async def import_spt_excel(file: UploadFile = File(...)):
+    """Import de données SPT depuis un fichier Excel et exécution de l'algorithme"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Valider les données
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        # Exécuter l'algorithme SPT
+        result = spt.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "imported_data": {
+                "job_names": parsed_data["job_names"],
+                "machine_names": parsed_data["machine_names"],
+                "jobs_count": len(parsed_data["jobs_data"]),
+                "machines_count": len(parsed_data["machine_names"])
+            },
+            "results": {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {parsed_data["machine_names"][int(m)]: tasks for m, tasks in result["machines"].items()}
+            }
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+@app.post("/edd/import-excel")
+async def import_edd_excel(file: UploadFile = File(...)):
+    """Import de données EDD depuis un fichier Excel et exécution de l'algorithme"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Valider les données
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        # Exécuter l'algorithme EDD
+        result = edd.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "imported_data": {
+                "job_names": parsed_data["job_names"],
+                "machine_names": parsed_data["machine_names"],
+                "jobs_count": len(parsed_data["jobs_data"]),
+                "machines_count": len(parsed_data["machine_names"])
+            },
+            "results": {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {parsed_data["machine_names"][int(m)]: tasks for m, tasks in result["machines"].items()}
+            }
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
 
 
 
