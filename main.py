@@ -158,7 +158,13 @@ def run_jobshop_edd_gantt(request: JobshopSPTRequest):
 @app.post("/jobshop/contraintes")
 def run_jobshop_contraintes(request: JobshopSPTRequest):
     try:
-        result = jobshop_contraintes.planifier_jobshop_contraintes(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
+        result = jobshop_contraintes.planifier_jobshop_contraintes(
+            request.job_names, 
+            request.machine_names, 
+            request.jobs_data, 
+            request.due_dates,
+            request.setup_times
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -166,7 +172,13 @@ def run_jobshop_contraintes(request: JobshopSPTRequest):
 @app.post("/jobshop/contraintes/gantt")
 def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
     try:
-        result = jobshop_contraintes.planifier_jobshop_contraintes(request.job_names, request.machine_names, request.jobs_data, request.due_dates)
+        result = jobshop_contraintes.planifier_jobshop_contraintes(
+            request.job_names, 
+            request.machine_names, 
+            request.jobs_data, 
+            request.due_dates,
+            request.setup_times
+        )
         machines_dict = {}
         for t in result["schedule"]:
             m_idx = request.machine_names.index(t["machine"])

@@ -111,6 +111,7 @@ class JobshopSPTRequest(BaseModel):
     job_names: List[str]
     machine_names: List[str]
     unite: str = "heures"
+    setup_times: Optional[Dict[int, Dict[int, Dict[int, float]]]] = None  # {machine_id: {from_job: {to_job: setup_time}}}
 
 
 
