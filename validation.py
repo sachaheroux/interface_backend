@@ -4,6 +4,7 @@ from pydantic import BaseModel
 # ----------- Validation des données de jobs -----------
 
 def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float], job_names: Optional[List[str]] = None):
+    """Validation générale pour tous les algorithmes flowshop"""
     if not jobs_data:
         raise ValueError("La liste des jobs est vide.")
 
@@ -47,6 +48,72 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
         raise ValueError(
             f"Un indice de machine ({max_machine_index}) est supérieur ou égal au nombre de tâches ({nb_taches_reference})."
         )
+
+def validate_johnson_data(jobs_data: List[List[float]], due_dates: List[float], job_names: Optional[List[str]] = None):
+    """Validation spécifique pour l'algorithme de Johnson (exactement 2 machines)"""
+    if not jobs_data:
+        raise ValueError("La liste des jobs est vide.")
+
+    if len(jobs_data) != len(due_dates):
+        raise ValueError("Le nombre de due_dates doit être égal au nombre de jobs.")
+
+    # Vérifier que chaque job a exactement 2 tâches
+    for job_index, job in enumerate(jobs_data):
+        job_name = job_names[job_index] if job_names and job_index < len(job_names) else f"Job {job_index}"
+        
+        if not job:
+            raise ValueError(f"Le job '{job_name}' ne contient aucune tâche.")
+        
+        if len(job) != 2:
+            raise ValueError(f"L'algorithme de Johnson nécessite exactement 2 machines. Le job '{job_name}' a {len(job)} durées au lieu de 2. Vérifiez que chaque ligne a exactement 2 valeurs de durée.")
+        
+        # Vérifier que les durées sont valides
+        for task_index, duration in enumerate(job):
+            if not isinstance(duration, (int, float)):
+                raise ValueError(f"La durée {task_index + 1} du job '{job_name}' doit être un nombre.")
+            
+            if duration < 0:
+                raise ValueError(f"La durée {task_index + 1} du job '{job_name}' ne peut pas être négative.")
+
+def validate_johnson_modifie_data(jobs_data: List[List[List[float]]], due_dates: List[float], job_names: Optional[List[str]] = None):
+    """Validation spécifique pour l'algorithme de Johnson Modifié (3 machines ou plus)"""
+    if not jobs_data:
+        raise ValueError("La liste des jobs est vide.")
+
+    if len(jobs_data) != len(due_dates):
+        raise ValueError("Le nombre de due_dates doit être égal au nombre de jobs.")
+
+    nb_taches_reference = len(jobs_data[0])
+    
+    # Vérifier qu'il y a au moins 3 machines
+    if nb_taches_reference < 3:
+        raise ValueError(f"L'algorithme de Johnson Modifié nécessite au moins 3 machines. Actuellement {nb_taches_reference} machine(s) détectée(s). Ajoutez au moins une machine supplémentaire.")
+
+    # Utiliser la validation générale pour le reste
+    validate_jobs_data(jobs_data, due_dates, job_names)
+
+def validate_smith_data(jobs: List[List[float]], job_names: Optional[List[str]] = None):
+    """Validation spécifique pour l'algorithme de Smith (exactement 1 machine)"""
+    if not jobs:
+        raise ValueError("La liste des jobs est vide.")
+
+    # Vérifier que chaque job a exactement 1 tâche
+    for job_index, job in enumerate(jobs):
+        job_name = job_names[job_index] if job_names and job_index < len(job_names) else f"Job {job_index}"
+        
+        if not job:
+            raise ValueError(f"Le job '{job_name}' ne contient aucune tâche.")
+        
+        if len(job) != 1:
+            raise ValueError(f"L'algorithme de Smith nécessite exactement 1 machine. Le job '{job_name}' a {len(job)} durées au lieu de 1. Vérifiez que chaque ligne a exactement 1 valeur de durée.")
+        
+        # Vérifier que la durée est valide
+        duration = job[0]
+        if not isinstance(duration, (int, float)):
+            raise ValueError(f"La durée du job '{job_name}' doit être un nombre.")
+        
+        if duration < 0:
+            raise ValueError(f"La durée du job '{job_name}' ne peut pas être négative.")
 
 # ----------- Modèles Pydantic utilisés dans main.py -----------
 

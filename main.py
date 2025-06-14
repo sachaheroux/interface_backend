@@ -26,7 +26,7 @@ import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
 import ligne_transfert_buffer_buzzacott
 import flowshop_machines
-from validation import validate_jobs_data, ExtendedRequest, FlexibleFlowshopRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
+from validation import validate_jobs_data, validate_johnson_data, validate_johnson_modifie_data, validate_smith_data, ExtendedRequest, FlexibleFlowshopRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMSSacADosRequest
 from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
@@ -356,6 +356,7 @@ def run_edd_gantt(request: ExtendedRequest):
 @app.post("/johnson")
 def run_johnson(request: JohnsonRequest):
     try:
+        validate_johnson_data(request.jobs_data, request.due_dates, request.job_names)
         result = johnson.schedule(request.jobs_data, request.due_dates)
         return {
             "sequence": result["sequence"],
@@ -371,6 +372,7 @@ def run_johnson(request: JohnsonRequest):
 @app.post("/johnson/gantt")
 def run_johnson_gantt(request: JohnsonRequest):
     try:
+        validate_johnson_data(request.jobs_data, request.due_dates, request.job_names)
         result = johnson.schedule(request.jobs_data, request.due_dates)
         fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson",
                                   unite=request.unite,
@@ -389,6 +391,7 @@ def run_johnson_gantt(request: JohnsonRequest):
 @app.post("/johnson_modifie")
 def run_johnson_modifie(request: JohnsonModifieRequest):
     try:
+        validate_johnson_modifie_data(request.jobs_data, request.due_dates, request.job_names)
         result = johnson_modifie.schedule(request.jobs_data, request.due_dates)
         return {
             "sequence": result["sequence"],
@@ -404,6 +407,7 @@ def run_johnson_modifie(request: JohnsonModifieRequest):
 @app.post("/johnson_modifie/gantt")
 def run_johnson_modifie_gantt(request: JohnsonModifieRequest):
     try:
+        validate_johnson_modifie_data(request.jobs_data, request.due_dates, request.job_names)
         result = johnson_modifie.schedule(request.jobs_data, request.due_dates)
         fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson modifié",
                                   unite=request.unite,
@@ -422,6 +426,7 @@ def run_johnson_modifie_gantt(request: JohnsonModifieRequest):
 @app.post("/smith")
 def run_smith(request: SmithRequest):
     try:
+        validate_smith_data(request.jobs, request.job_names)
         result = smith.smith_algorithm(request.jobs)
         return result
     except Exception as e:
@@ -430,6 +435,7 @@ def run_smith(request: SmithRequest):
 @app.post("/smith/gantt")
 def run_smith_gantt(request: SmithRequest):
     try:
+        validate_smith_data(request.jobs, request.job_names)
         result = smith.smith_algorithm(request.jobs)
         fig = smith.generate_gantt(result["sequence"], request.jobs,
                                    unite=request.unite,
@@ -1335,6 +1341,261 @@ async def import_edd_excel(file: UploadFile = File(...)):
                 "machines_count": len(parsed_data["machine_names"])
             },
             "results": {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {parsed_data["machine_names"][int(m)]: tasks for m, tasks in result["machines"].items()}
+            }
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+# ----------- Import Excel pour Johnson -----------
+
+@app.post("/johnson/import-excel")
+async def import_johnson_excel(file: UploadFile = File(...)):
+    """Import de données Johnson depuis un fichier Excel et exécution de l'algorithme"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Convertir au format Johnson (List[List[float]] au lieu de List[List[List[float]]])
+        johnson_jobs_data = []
+        for job in parsed_data["jobs_data"]:
+            job_durations = [task[1] for task in job]  # Extraire seulement les durées
+            johnson_jobs_data.append(job_durations)
+        
+        # Valider les données spécifiquement pour Johnson
+        validate_johnson_data(johnson_jobs_data, parsed_data["due_dates"], parsed_data["job_names"])
+        
+        # Exécuter l'algorithme Johnson
+        result = johnson.schedule(johnson_jobs_data, parsed_data["due_dates"])
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "imported_data": {
+                "job_names": parsed_data["job_names"],
+                "machine_names": parsed_data["machine_names"][:2],  # Johnson = 2 machines
+                "jobs_data": johnson_jobs_data,
+                "due_dates": parsed_data["due_dates"],
+                "unite": parsed_data["unite"],
+                "jobs_count": len(johnson_jobs_data),
+                "machines_count": 2
+            },
+            "results": {
+                "sequence": result["sequence"],
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {parsed_data["machine_names"][int(m)]: tasks for m, tasks in result["machines"].items()}
+            }
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+# ----------- Import Excel pour Johnson Modifié -----------
+
+@app.post("/johnson_modifie/import-excel")
+async def import_johnson_modifie_excel(file: UploadFile = File(...)):
+    """Import de données Johnson Modifié depuis un fichier Excel et exécution de l'algorithme"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Valider les données spécifiquement pour Johnson Modifié
+        validate_johnson_modifie_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
+        
+        # Exécuter l'algorithme Johnson Modifié
+        result = johnson_modifie.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "imported_data": {
+                "job_names": parsed_data["job_names"],
+                "machine_names": parsed_data["machine_names"],
+                "jobs_data": parsed_data["jobs_data"],
+                "due_dates": parsed_data["due_dates"],
+                "unite": parsed_data["unite"],
+                "jobs_count": len(parsed_data["jobs_data"]),
+                "machines_count": len(parsed_data["machine_names"])
+            },
+            "results": {
+                "sequence": result["sequence"],
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {parsed_data["machine_names"][int(m)]: tasks for m, tasks in result["machines"].items()}
+            }
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+# ----------- Import Excel pour Smith -----------
+
+@app.post("/smith/import-excel")
+async def import_smith_excel(file: UploadFile = File(...)):
+    """Import de données Smith depuis un fichier Excel et exécution de l'algorithme"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Convertir au format Smith (List[List[float]] avec 1 seule durée par job)
+        smith_jobs_data = []
+        for job in parsed_data["jobs_data"]:
+            if len(job) > 0:
+                smith_jobs_data.append([job[0][1]])  # Prendre seulement la première durée
+        
+        # Valider les données spécifiquement pour Smith
+        validate_smith_data(smith_jobs_data, parsed_data["job_names"])
+        
+        # Exécuter l'algorithme Smith
+        result = smith.smith_algorithm(smith_jobs_data)
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "imported_data": {
+                "job_names": parsed_data["job_names"],
+                "machine_names": [parsed_data["machine_names"][0]] if parsed_data["machine_names"] else ["Machine 0"],
+                "jobs_data": smith_jobs_data,
+                "unite": parsed_data["unite"],
+                "jobs_count": len(smith_jobs_data),
+                "machines_count": 1
+            },
+            "results": result
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+# ----------- Import Excel pour Contraintes -----------
+
+@app.post("/contraintes/import-excel")
+async def import_contraintes_excel(file: UploadFile = File(...)):
+    """Import de données Contraintes depuis un fichier Excel et exécution de l'algorithme"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Valider les données
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
+        
+        # Exécuter l'algorithme Contraintes
+        result = contraintes.flowshop_contraintes(
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"],
+            parsed_data["job_names"], 
+            parsed_data["machine_names"],
+            None  # machines_per_stage
+        )
+        
+        # Ajuster les noms pour les machines
+        machine_names_to_use = parsed_data["machine_names"] or [f"Machine {i+1}" for i in range(len(parsed_data["jobs_data"][0]))]
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "imported_data": {
+                "job_names": parsed_data["job_names"],
+                "machine_names": parsed_data["machine_names"],
+                "jobs_data": parsed_data["jobs_data"],
+                "due_dates": parsed_data["due_dates"],
+                "unite": parsed_data["unite"],
+                "jobs_count": len(parsed_data["jobs_data"]),
+                "machines_count": len(parsed_data["machine_names"])
+            },
+            "results": {
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {machine_names_to_use[int(m)]: tasks for m, tasks in result["machines"].items() if str(m).isdigit() and int(m) < len(machine_names_to_use)},
+                "raw_machines": result["machines"],
+                "gantt_url": result.get("gantt_url")
+            }
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+# ----------- Import Excel pour EDD -----------
+
+@app.post("/edd/import-excel")
+async def import_edd_excel(file: UploadFile = File(...)):
+    """Import de données EDD depuis un fichier Excel et exécution de l'algorithme"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Convertir au format EDD (List[List[float]] au lieu de List[List[List[float]]])
+        edd_jobs_data = []
+        for job in parsed_data["jobs_data"]:
+            job_durations = [task[1] for task in job]  # Extraire seulement les durées
+            edd_jobs_data.append(job_durations)
+        
+        # Valider les données
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
+        
+        # Exécuter l'algorithme EDD
+        result = edd.schedule(edd_jobs_data, parsed_data["due_dates"])
+        
+        return {
+            "success": True,
+            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "imported_data": {
+                "job_names": parsed_data["job_names"],
+                "machine_names": parsed_data["machine_names"],
+                "jobs_data": edd_jobs_data,
+                "due_dates": parsed_data["due_dates"],
+                "unite": parsed_data["unite"],
+                "jobs_count": len(edd_jobs_data),
+                "machines_count": len(parsed_data["machine_names"])
+            },
+            "results": {
+                "sequence": result["sequence"],
                 "makespan": result["makespan"],
                 "flowtime": result["flowtime"],
                 "retard_cumule": result["retard_cumule"],
