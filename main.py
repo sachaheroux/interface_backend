@@ -207,8 +207,8 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
             color = colors[i % len(colors)]
             legend_elements.append(patches.Patch(color=color, label=job_name))
         
-        # Positionner la légende en bas à droite pour éviter les dates dues en haut
-        ax.legend(handles=legend_elements, loc='lower right', bbox_to_anchor=(1, 0), 
+        # Positionner la légende en haut à droite
+        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
                  frameon=True, fancybox=True, shadow=True, fontsize=9)
     
     # Ajuster les marges
