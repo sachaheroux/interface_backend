@@ -1245,6 +1245,9 @@ async def import_spt_excel(file: UploadFile = File(...)):
             "imported_data": {
                 "job_names": parsed_data["job_names"],
                 "machine_names": parsed_data["machine_names"],
+                "jobs_data": parsed_data["jobs_data"],
+                "due_dates": parsed_data["due_dates"],
+                "unite": parsed_data["unite"],
                 "jobs_count": len(parsed_data["jobs_data"]),
                 "machines_count": len(parsed_data["machine_names"])
             },
@@ -1261,6 +1264,45 @@ async def import_spt_excel(file: UploadFile = File(...)):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+@app.post("/spt/import-excel-gantt")
+async def import_spt_excel_gantt(file: UploadFile = File(...)):
+    """Import de données SPT depuis un fichier Excel et génération du diagramme de Gantt"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Valider les données
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        # Exécuter l'algorithme SPT
+        result = spt.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        # Générer le diagramme de Gantt
+        fig = create_gantt_figure(
+            result, 
+            "Diagramme de Gantt - SPT (Import Excel)",
+            unite=parsed_data["unite"],
+            job_names=parsed_data["job_names"],
+            machine_names=parsed_data["machine_names"]
+        )
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        
+        return StreamingResponse(buf, media_type="image/png")
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et de la génération du Gantt: {str(e)}")
 
 @app.post("/edd/import-excel")
 async def import_edd_excel(file: UploadFile = File(...)):
@@ -1286,6 +1328,9 @@ async def import_edd_excel(file: UploadFile = File(...)):
             "imported_data": {
                 "job_names": parsed_data["job_names"],
                 "machine_names": parsed_data["machine_names"],
+                "jobs_data": parsed_data["jobs_data"],
+                "due_dates": parsed_data["due_dates"],
+                "unite": parsed_data["unite"],
                 "jobs_count": len(parsed_data["jobs_data"]),
                 "machines_count": len(parsed_data["machine_names"])
             },
