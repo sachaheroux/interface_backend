@@ -55,33 +55,125 @@ except Exception as e:
 
 # ----------- Gantt utilitaire -----------
 
-def create_gantt_figure(result, title: str, unite="heures", job_names=None, machine_names=None):
-    fig, ax = plt.subplots(figsize=(10, 3))
-    colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
-
+def create_gantt_figure(result, title: str, unite="heures", job_names=None, machine_names=None, due_dates=None):
+    """
+    Crée un diagramme de Gantt professionnel avec couleurs basées sur les dates dues
+    """
+    import matplotlib.patches as patches
+    
+    # Calculer la taille optimale selon le nombre de machines
+    num_machines = len(result["machines"])
+    fig_height = max(4, num_machines * 0.8 + 2)
+    fig, ax = plt.subplots(figsize=(14, fig_height))
+    
+    # Style professionnel
+    ax.set_facecolor('#f8f9fa')
+    fig.patch.set_facecolor('white')
+    
+    # Grille de fond pour une meilleure lisibilité
+    ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
+    ax.set_axisbelow(True)
+    
+    # Calculer les temps de complétion pour déterminer les couleurs
+    completion_times = {}
+    if "completion_times" in result:
+        completion_times = result["completion_times"]
+    else:
+        # Calculer les temps de complétion à partir des machines
+        for m, tasks in result["machines"].items():
+            for t in tasks:
+                job_idx = t["job"]
+                end_time = t["start"] + t["duration"]
+                if job_idx not in completion_times or end_time > completion_times[job_idx]:
+                    completion_times[job_idx] = end_time
+    
+    def get_due_date_color(job_idx, completion_time):
+        """Détermine la couleur basée sur la date due"""
+        if not due_dates or job_idx >= len(due_dates):
+            return "#6c757d"  # Gris par défaut
+        
+        due_date = due_dates[job_idx]
+        if completion_time <= due_date:
+            # En avance ou à l'heure : vert
+            return "#28a745"
+        elif completion_time <= due_date * 1.1:  # 10% de tolérance
+            # Légèrement en retard : orange
+            return "#fd7e14"
+        else:
+            # En retard : rouge
+            return "#dc3545"
+    
     # Trier les machines par index pour un affichage cohérent
     sorted_machines = sorted(result["machines"].items(), key=lambda x: int(x[0]))
+    
+    # Hauteur des barres
+    bar_height = 0.6
     
     for m_idx, (m, tasks) in enumerate(sorted_machines):
         label = machine_names[int(m)] if machine_names and int(m) < len(machine_names) else f"Machine {int(m)}"
         
         if len(tasks) == 0:
             # Machine vide : afficher une ligne vide mais visible
-            ax.barh(label, 0, left=0, color='lightgray', alpha=0.3, height=0.1)
+            ax.barh(label, 0, left=0, color='#e9ecef', alpha=0.5, height=0.2, 
+                   edgecolor='#6c757d', linewidth=0.5)
         else:
-            # Machine avec tâches : afficher normalement
+            # Machine avec tâches : afficher avec style professionnel
             for t in tasks:
                 job_idx = t["job"] if isinstance(t["job"], int) else job_names.index(t["job"])
                 job_label = job_names[job_idx] if job_names else f"J{job_idx}"
-                color = colors[job_idx % len(colors)]
-                ax.barh(label, t["duration"], left=t["start"], color=color)
+                
+                # Couleur basée sur la date due
+                completion_time = completion_times.get(job_idx, t["start"] + t["duration"])
+                color = get_due_date_color(job_idx, completion_time)
+                
+                # Créer la barre avec bordure
+                bar = ax.barh(label, t["duration"], left=t["start"], color=color, 
+                             height=bar_height, edgecolor='white', linewidth=1.5, alpha=0.9)
+                
+                # Ajouter une ombre subtile
+                shadow = ax.barh(label, t["duration"], left=t["start"] + 0.1, color='black', 
+                               height=bar_height, alpha=0.1, zorder=0)
+                
+                # Texte du job avec style amélioré
+                text_color = 'white' if color in ['#28a745', '#dc3545'] else 'white'
                 ax.text(t["start"] + t["duration"] / 2, label, job_label,
-                        va="center", ha="center", color="white", fontsize=8)
+                       va="center", ha="center", color=text_color, fontsize=9, 
+                       fontweight='bold', zorder=10)
+                
+                # Ajouter les temps de début et fin en petits caractères
+                if t["duration"] > 2:  # Seulement si la barre est assez large
+                    ax.text(t["start"] + 0.1, label, f'{t["start"]:.1f}',
+                           va="center", ha="left", color=text_color, fontsize=7, alpha=0.8)
+                    ax.text(t["start"] + t["duration"] - 0.1, label, f'{t["start"] + t["duration"]:.1f}',
+                           va="center", ha="right", color=text_color, fontsize=7, alpha=0.8)
 
-    ax.set_xlabel(f"Temps ({unite})")
+    # Améliorer les axes
+    ax.set_xlabel(f"Temps ({unite})", fontsize=12, fontweight='bold')
+    ax.set_ylabel("Machines", fontsize=12, fontweight='bold')
     ax.invert_yaxis()
-    ax.set_title(title)
+    
+    # Titre avec style
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+    
+    # Créer la légende pour les couleurs des dates dues
+    legend_elements = [
+        patches.Patch(color='#28a745', label='À temps (≤ date due)'),
+        patches.Patch(color='#fd7e14', label='Légèrement en retard (≤ 110% date due)'),
+        patches.Patch(color='#dc3545', label='En retard (> 110% date due)'),
+        patches.Patch(color='#6c757d', label='Pas de date due')
+    ]
+    
+    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
+             frameon=True, fancybox=True, shadow=True, fontsize=9)
+    
+    # Ajuster les marges
     plt.tight_layout()
+    
+    # Ajouter une bordure autour du graphique
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#dee2e6')
+        spine.set_linewidth(1)
+    
     return fig
 
 def create_gantt_figure_with_setup(result, title: str, unite="heures", job_names=None, machine_names=None):
@@ -289,9 +381,10 @@ def run_spt_gantt(request: ExtendedRequest):
         fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop SPT",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -1299,11 +1392,12 @@ async def import_spt_excel_gantt(file: UploadFile = File(...)):
             "Diagramme de Gantt - SPT (Import Excel)",
             unite=parsed_data["unite"],
             job_names=parsed_data["job_names"],
-            machine_names=parsed_data["machine_names"]
+            machine_names=parsed_data["machine_names"],
+            due_dates=parsed_data["due_dates"]
         )
         
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         
