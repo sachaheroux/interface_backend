@@ -1234,7 +1234,7 @@ async def import_spt_excel(file: UploadFile = File(...)):
         parsed_data = excel_import.parse_flowshop_excel(file_content)
         
         # Valider les données
-        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"])
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
         
         # Exécuter l'algorithme SPT
         result = spt.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
@@ -1278,7 +1278,7 @@ async def import_spt_excel_gantt(file: UploadFile = File(...)):
         parsed_data = excel_import.parse_flowshop_excel(file_content)
         
         # Valider les données
-        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"])
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
         
         # Exécuter l'algorithme SPT
         result = spt.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
@@ -1317,7 +1317,7 @@ async def import_edd_excel(file: UploadFile = File(...)):
         parsed_data = excel_import.parse_flowshop_excel(file_content)
         
         # Valider les données
-        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"])
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
         
         # Exécuter l'algorithme EDD
         result = edd.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])

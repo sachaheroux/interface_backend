@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 # ----------- Validation des données de jobs -----------
 
-def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float]):
+def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float], job_names: Optional[List[str]] = None):
     if not jobs_data:
         raise ValueError("La liste des jobs est vide.")
 
@@ -14,11 +14,14 @@ def validate_jobs_data(jobs_data: List[List[List[float]]], due_dates: List[float
     machine_ids = set()
 
     for job_index, job in enumerate(jobs_data):
+        job_name = job_names[job_index] if job_names and job_index < len(job_names) else f"Job {job_index}"
+        
         if not job:
-            raise ValueError(f"Le job {job_index} ne contient aucune tâche.")
+            raise ValueError(f"Le job '{job_name}' ne contient aucune tâche.")
 
         if len(job) != nb_taches_reference:
-            raise ValueError("Tous les jobs doivent contenir le même nombre de tâches (Flowshop).")
+            first_job_name = job_names[0] if job_names and len(job_names) > 0 else "Job 0"
+            raise ValueError(f"Tous les jobs doivent contenir le même nombre de tâches (Flowshop). '{job_name}' a {len(job)} tâches, mais '{first_job_name}' en a {nb_taches_reference}. Vérifiez que toutes les lignes ont le même nombre de durées remplies.")
 
         for task_index, task in enumerate(job):
             if not (isinstance(task, list) or isinstance(task, tuple)) or len(task) != 2:

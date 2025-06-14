@@ -110,46 +110,72 @@ def parse_matrix_format(file_content: bytes) -> Dict:
         job_names = []
         jobs_data = []
         due_dates = []
+        errors = []
         
         # Parcourir les lignes 6-15 (index 5-14)
         for i in range(5, 15):
-            try:
-                # Nom du job (colonne C)
-                job_name = df.iloc[i, 2]
-                if pd.isna(job_name) or not str(job_name).strip():
-                    continue
+            row_num = i + 1  # Numéro de ligne Excel (1-indexé)
+            
+            # Nom du job (colonne C)
+            job_name = df.iloc[i, 2]
+            if pd.isna(job_name) or not str(job_name).strip():
+                continue  # Ligne vide, on passe
+            
+            job_name = str(job_name).strip()
+            
+            # Vérifier les durées sur les machines (colonnes D-M, index 3-12)
+            job_durations = []
+            duration_errors = []
+            
+            for j in range(3, 13):  # colonnes D à M
+                col_letter = chr(68 + j - 3)  # D, E, F, G, H, I, J, K, L, M
+                duration = df.iloc[i, j]
                 
-                job_name = str(job_name).strip()
-                job_names.append(job_name)
-                
-                # Durées sur les machines (colonnes D-M, index 3-12)
-                job_durations = []
-                for j in range(3, 13):  # colonnes D à M
-                    duration = df.iloc[i, j]
-                    if pd.notna(duration) and str(duration).strip():
-                        try:
-                            duration_val = float(duration)
-                            if duration_val > 0:  # Ignorer les durées nulles ou négatives
-                                job_durations.append([j-3, duration_val])  # [machine_id, duration]
-                        except:
+                if pd.notna(duration) and str(duration).strip():
+                    try:
+                        duration_val = float(duration)
+                        if duration_val < 0:
+                            duration_errors.append(f"Durée négative en {col_letter}{row_num}: {duration}")
+                        elif duration_val == 0:
+                            # Durée nulle acceptée mais pas ajoutée
                             pass
-                
-                # Date due (colonne N, index 13)
-                due_date = df.iloc[i, 13]
+                        else:
+                            job_durations.append([j-3, duration_val])  # [machine_id, duration]
+                    except (ValueError, TypeError):
+                        duration_errors.append(f"Valeur invalide en {col_letter}{row_num}: '{duration}' (doit être un nombre)")
+            
+            # Vérifier la date due (colonne N, index 13)
+            due_date = df.iloc[i, 13]
+            due_date_val = 10.0  # valeur par défaut
+            
+            if pd.notna(due_date) and str(due_date).strip():
                 try:
-                    due_date_val = float(due_date) if pd.notna(due_date) else 10.0
-                except:
+                    due_date_val = float(due_date)
+                    if due_date_val < 0:
+                        errors.append(f"Date due négative pour '{job_name}' en N{row_num}: {due_date}")
+                        due_date_val = 10.0
+                except (ValueError, TypeError):
+                    errors.append(f"Date due invalide pour '{job_name}' en N{row_num}: '{due_date}' (doit être un nombre)")
                     due_date_val = 10.0
-                
-                # Ajouter seulement si le job a au moins une durée
-                if job_durations:
-                    jobs_data.append(job_durations)
-                    due_dates.append(due_date_val)
-                else:
-                    job_names.pop()  # Retirer le nom si pas de durées
-                    
-            except Exception as e:
-                continue
+            
+            # Ajouter les erreurs de durée si il y en a
+            if duration_errors:
+                errors.extend([f"Job '{job_name}': {err}" for err in duration_errors])
+            
+            # Ajouter le job seulement s'il a au moins une durée valide
+            if job_durations:
+                job_names.append(job_name)
+                jobs_data.append(job_durations)
+                due_dates.append(due_date_val)
+            elif not duration_errors:  # Pas d'erreurs mais pas de durées non plus
+                errors.append(f"Job '{job_name}' (ligne {row_num}): aucune durée valide trouvée")
+        
+        # Si il y a des erreurs, les signaler
+        if errors:
+            error_msg = "Erreurs dans le fichier Excel:\n" + "\n".join(f"• {err}" for err in errors[:10])
+            if len(errors) > 10:
+                error_msg += f"\n... et {len(errors) - 10} autres erreurs"
+            raise HTTPException(status_code=400, detail=error_msg)
         
         if not job_names:
             raise HTTPException(
