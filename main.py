@@ -426,9 +426,17 @@ def run_johnson_modifie_gantt(request: JohnsonModifieRequest):
 @app.post("/smith")
 def run_smith(request: SmithRequest):
     try:
-        validate_smith_data(request.jobs, request.job_names)
         result = smith.smith_algorithm(request.jobs)
-        return result
+        return {
+            "sequence": result["sequence"],
+            "makespan": result["makespan"],
+            "flowtime": result["flowtime"],
+            "retard_cumule": result["retard_cumule"],
+            "completion_times": result["completion_times"],
+            "planification": {"Machine 0": result["machines"]["0"]},
+            "N": result.get("N", 0),
+            "cumulative_delay": result["cumulative_delay"]
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1497,14 +1505,23 @@ async def import_smith_excel(file: UploadFile = File(...)):
             "message": info_message,
             "imported_data": {
                 "job_names": parsed_data["job_names"],
-                "machine_names": [parsed_data["machine_names"][0]] if parsed_data["machine_names"] else ["Machine 0"],
+                "machine_names": [parsed_data["machine_names"][0]] if parsed_data["machine_names"] else ["Machine_1"],
                 "jobs_data": smith_jobs_data,
                 "due_dates": parsed_data["due_dates"],
                 "unite": parsed_data["unite"],
                 "jobs_count": len(smith_jobs_data),
                 "machines_count": 1
             },
-            "results": result
+            "results": {
+                "sequence": result["sequence"],
+                "makespan": result["makespan"],
+                "flowtime": result["flowtime"],
+                "retard_cumule": result["retard_cumule"],
+                "completion_times": result["completion_times"],
+                "planification": {"Machine_1": result["machines"]["0"]} if parsed_data["machine_names"] else {"Machine 0": result["machines"]["0"]},
+                "N": result.get("N", 0),
+                "cumulative_delay": result["cumulative_delay"]
+            }
         }
         
     except HTTPException as e:

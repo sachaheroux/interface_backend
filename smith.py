@@ -26,17 +26,46 @@ def smith_algorithm(jobs):
     denominator = sum(job[0] for job in jobs)
     N = numerator / denominator if denominator else 0
 
+    # Calcul du retard cumulé et génération des informations détaillées
     cumulative_delay = 0
+    completion_times = {}
+    machines = {"0": []}  # Smith utilise une seule machine (machine 0)
+    current_time = 0
+    
     for i, job in enumerate(sequence):
-        executed = sum(jobs[j - 1][0] for j in sequence[:i + 1])
-        if executed > jobs[job - 1][1]:
-            cumulative_delay += executed - jobs[job - 1][1]
+        job_index = job - 1  # Convertir en index 0-based
+        duration = jobs[job_index][0]
+        due_date = jobs[job_index][1]
+        
+        # Temps de complétion
+        completion_time = current_time + duration
+        completion_times[f"Job {job}"] = completion_time
+        
+        # Planification pour la machine
+        machines["0"].append({
+            "job": job_index,
+            "start": current_time,
+            "duration": duration
+        })
+        
+        # Calcul du retard
+        if completion_time > due_date:
+            cumulative_delay += completion_time - due_date
+            
+        current_time = completion_time
+
+    # Calcul du makespan (temps total)
+    makespan = current_time
 
     return {
         "sequence": sequence,
         "flowtime": flowtime,
         "N": N,
-        "cumulative_delay": cumulative_delay
+        "cumulative_delay": cumulative_delay,
+        "makespan": makespan,
+        "completion_times": completion_times,
+        "machines": machines,
+        "retard_cumule": cumulative_delay  # Alias pour compatibilité
     }
 
 def generate_gantt(sequence, jobs, unite="heures", job_names=None):
