@@ -443,7 +443,6 @@ def run_smith(request: SmithRequest):
 @app.post("/smith/gantt")
 def run_smith_gantt(request: SmithRequest):
     try:
-        validate_smith_data(request.jobs, request.job_names)
         result = smith.smith_algorithm(request.jobs)
         fig = smith.generate_gantt(result["sequence"], request.jobs,
                                    unite=request.unite,

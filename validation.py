@@ -92,28 +92,7 @@ def validate_johnson_modifie_data(jobs_data: List[List[List[float]]], due_dates:
     # Utiliser la validation générale pour le reste
     validate_jobs_data(jobs_data, due_dates, job_names)
 
-def validate_smith_data(jobs: List[List[float]], job_names: Optional[List[str]] = None):
-    """Validation spécifique pour l'algorithme de Smith (exactement 1 machine)"""
-    if not jobs:
-        raise ValueError("La liste des jobs est vide.")
 
-    # Vérifier que chaque job a exactement 1 tâche
-    for job_index, job in enumerate(jobs):
-        job_name = job_names[job_index] if job_names and job_index < len(job_names) else f"Job {job_index}"
-        
-        if not job:
-            raise ValueError(f"Le job '{job_name}' ne contient aucune tâche.")
-        
-        if len(job) != 1:
-            raise ValueError(f"L'algorithme de Smith nécessite exactement 1 machine. Le job '{job_name}' a {len(job)} durées au lieu de 1. Vérifiez que chaque ligne a exactement 1 valeur de durée.")
-        
-        # Vérifier que la durée est valide
-        duration = job[0]
-        if not isinstance(duration, (int, float)):
-            raise ValueError(f"La durée du job '{job_name}' doit être un nombre.")
-        
-        if duration < 0:
-            raise ValueError(f"La durée du job '{job_name}' ne peut pas être négative.")
 
 # ----------- Modèles Pydantic utilisés dans main.py -----------
 
