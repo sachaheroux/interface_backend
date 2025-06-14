@@ -8,6 +8,9 @@ from openpyxl.styles import Font, PatternFill, Alignment
 def parse_flowshop_excel(file_content: bytes) -> Dict:
     """
     Parse un fichier Excel pour les algorithmes flowshop (SPT, EDD, etc.)
+    Supporte deux formats:
+    1. Format avec onglets (ancien)
+    2. Format matrice unique (nouveau - 12 colonnes x 11 lignes)
     
     Args:
         file_content: Contenu du fichier Excel en bytes
@@ -16,7 +19,13 @@ def parse_flowshop_excel(file_content: bytes) -> Dict:
         Dict contenant les données formatées pour l'API
     """
     try:
-        # Lire le fichier Excel
+        # Essayer d'abord le nouveau format (matrice unique)
+        try:
+            return parse_matrix_format(file_content)
+        except:
+            pass
+        
+        # Fallback vers l'ancien format avec onglets
         excel_file = pd.ExcelFile(io.BytesIO(file_content))
         
         # Vérifier que les onglets requis existent
@@ -26,7 +35,7 @@ def parse_flowshop_excel(file_content: bytes) -> Dict:
         if missing_sheets:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Onglets manquants dans le fichier Excel: {', '.join(missing_sheets)}"
+                detail=f"Format Excel non reconnu. Utilisez le template fourni."
             )
         
         # Lire les onglets
@@ -51,6 +60,123 @@ def parse_flowshop_excel(file_content: bytes) -> Dict:
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel: {str(e)}")
+
+def parse_matrix_format(file_content: bytes) -> Dict:
+    """
+    Parse le nouveau format matrice (12 colonnes x 11 lignes)
+    Structure:
+    - Cellule C5: "Job" (coin haut gauche du tableau)
+    - Colonne C (lignes 6-15): noms des jobs
+    - Colonnes D-M: durées sur les machines (10 machines max)
+    - Colonne N: dates dues
+    - Cellule C20: unité de temps (j/h/m)
+    
+    Args:
+        file_content: Contenu du fichier Excel en bytes
+        
+    Returns:
+        Dict contenant les données formatées pour l'API
+    """
+    try:
+        # Lire le fichier Excel sans en-tête automatique
+        excel_file = io.BytesIO(file_content)
+        df = pd.read_excel(excel_file, header=None)
+        
+        # Vérifier la structure minimale
+        if df.shape[0] < 20 or df.shape[1] < 14:
+            raise ValueError("Structure de fichier incorrecte")
+        
+        # Vérifier que c'est bien le bon format (cellule C5 doit contenir "Job")
+        job_header = df.iloc[4, 2]  # C5 (ligne 5, colonne C)
+        if pd.isna(job_header) or str(job_header).strip().lower() != "job":
+            raise ValueError("Format non reconnu - cellule C5 doit contenir 'Job'")
+        
+        # Extraire l'unité de temps (cellule C20)
+        unite = "heures"  # valeur par défaut
+        try:
+            unite_cell = df.iloc[19, 2]  # C20
+            if pd.notna(unite_cell):
+                unite_str = str(unite_cell).lower().strip()
+                if unite_str == 'j':
+                    unite = "jours"
+                elif unite_str == 'h':
+                    unite = "heures"
+                elif unite_str == 'm':
+                    unite = "minutes"
+        except:
+            pass
+        
+        # Extraire les données des jobs
+        job_names = []
+        jobs_data = []
+        due_dates = []
+        
+        # Parcourir les lignes 6-15 (index 5-14)
+        for i in range(5, 15):
+            try:
+                # Nom du job (colonne C)
+                job_name = df.iloc[i, 2]
+                if pd.isna(job_name) or not str(job_name).strip():
+                    continue
+                
+                job_name = str(job_name).strip()
+                job_names.append(job_name)
+                
+                # Durées sur les machines (colonnes D-M, index 3-12)
+                job_durations = []
+                for j in range(3, 13):  # colonnes D à M
+                    duration = df.iloc[i, j]
+                    if pd.notna(duration) and str(duration).strip():
+                        try:
+                            duration_val = float(duration)
+                            if duration_val > 0:  # Ignorer les durées nulles ou négatives
+                                job_durations.append([j-3, duration_val])  # [machine_id, duration]
+                        except:
+                            pass
+                
+                # Date due (colonne N, index 13)
+                due_date = df.iloc[i, 13]
+                try:
+                    due_date_val = float(due_date) if pd.notna(due_date) else 10.0
+                except:
+                    due_date_val = 10.0
+                
+                # Ajouter seulement si le job a au moins une durée
+                if job_durations:
+                    jobs_data.append(job_durations)
+                    due_dates.append(due_date_val)
+                else:
+                    job_names.pop()  # Retirer le nom si pas de durées
+                    
+            except Exception as e:
+                continue
+        
+        if not job_names:
+            raise HTTPException(
+                status_code=400,
+                detail="Aucun job valide trouvé. Vérifiez que vous avez rempli les noms de jobs et au moins une durée par job."
+            )
+        
+        # Déterminer le nombre de machines utilisées
+        max_machine_id = 0
+        for job in jobs_data:
+            for machine_id, _ in job:
+                max_machine_id = max(max_machine_id, machine_id)
+        
+        machine_names = [f"Machine_{i}" for i in range(max_machine_id + 1)]
+        
+        return {
+            "jobs_data": jobs_data,
+            "due_dates": due_dates,
+            "job_names": job_names,
+            "machine_names": machine_names,
+            "unite": unite
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise ValueError(f"Erreur parsing format matrice: {str(e)}")
 
 def parse_machines(machines_df: pd.DataFrame) -> Tuple[List[str], Dict[int, str]]:
     """
