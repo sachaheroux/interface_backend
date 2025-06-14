@@ -26,7 +26,7 @@ import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
 import ligne_transfert_buffer_buzzacott
 import flowshop_machines
-from validation import validate_jobs_data, validate_johnson_data, validate_johnson_modifie_data, validate_smith_data, ExtendedRequest, FlexibleFlowshopRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
+from validation import validate_jobs_data, validate_johnson_data, validate_johnson_modifie_data, ExtendedRequest, FlexibleFlowshopRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
 from agenda_utils import generer_agenda_json
 from fms_sac_a_dos import solve_fms_sac_a_dos, generate_fms_sac_a_dos_chart, FMSSacADosRequest
 from fms_sac_a_dos_pl import fms_sac_a_dos_pl, generate_fms_sac_a_dos_pl_chart
@@ -1352,7 +1352,7 @@ async def import_edd_excel(file: UploadFile = File(...)):
                 "flowtime": result["flowtime"],
                 "retard_cumule": result["retard_cumule"],
                 "completion_times": result["completion_times"],
-                "planification": {parsed_data["machine_names"][int(m)]: tasks for m, tasks in result["machines"].items()}
+                "planification": {parsed_data["machine_names"][int(m)] if int(m) < len(parsed_data["machine_names"]) else f"Machine {int(m)}": tasks for m, tasks in result["machines"].items()}
             }
         }
         
@@ -1360,6 +1360,45 @@ async def import_edd_excel(file: UploadFile = File(...)):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
+
+@app.post("/edd/import-excel-gantt")
+async def import_edd_excel_gantt(file: UploadFile = File(...)):
+    """Import de données EDD depuis un fichier Excel et génération du diagramme de Gantt"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Valider les données
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
+        
+        # Exécuter l'algorithme EDD
+        result = edd.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
+        
+        # Générer le diagramme de Gantt
+        fig = create_gantt_figure(
+            result, 
+            "Diagramme de Gantt - EDD (Import Excel)",
+            unite=parsed_data["unite"],
+            job_names=parsed_data["job_names"],
+            machine_names=parsed_data["machine_names"]
+        )
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        
+        return StreamingResponse(buf, media_type="image/png")
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et de la génération du Gantt: {str(e)}")
 
 # ----------- Import Excel pour Johnson -----------
 
