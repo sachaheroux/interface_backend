@@ -144,17 +144,42 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
             x_labels = [str(int(tick)) for tick in time_ticks]
             ax.set_xticklabels(x_labels)
             
-            # Ajouter les dates dues sous l'axe du temps
+            # Grouper les dates dues par valeur pour gérer les doublons
+            due_dates_grouped = {}
             for due_date, color in due_date_colors.items():
                 if due_date <= max_time:
-                    # Ajouter une ligne verticale pour marquer la date due
-                    ax.axvline(x=due_date, color=color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
-                    
-                    # Ajouter le texte de la date due sous l'axe x
+                    if due_date not in due_dates_grouped:
+                        due_dates_grouped[due_date] = []
+                    due_dates_grouped[due_date].append(color)
+            
+            # Ajouter les dates dues sous l'axe du temps
+            for due_date, colors in due_dates_grouped.items():
+                # Ajouter une ligne verticale pour marquer la date due
+                # Si plusieurs couleurs, utiliser la première comme couleur principale
+                main_color = colors[0]
+                ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
+                
+                if len(colors) == 1:
+                    # Une seule tâche avec cette date due
                     ax.text(due_date, -0.5, f'Due: {int(due_date)}',
                            ha='center', va='top', fontsize=9, fontweight='bold',
-                           color=color, rotation=0, zorder=11,
-                           bbox=dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.2, edgecolor=color))
+                           color=colors[0], rotation=0, zorder=11,
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor=colors[0], alpha=0.2, edgecolor=colors[0]))
+                else:
+                    # Plusieurs tâches avec la même date due
+                    # Créer un texte combiné avec les couleurs
+                    combined_text = f'Due: {int(due_date)} ({len(colors)} jobs)'
+                    
+                    # Utiliser un dégradé ou une couleur mixte pour l'encadré
+                    ax.text(due_date, -0.5, combined_text,
+                           ha='center', va='top', fontsize=9, fontweight='bold',
+                           color='black', rotation=0, zorder=11,
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8, edgecolor='black'))
+                    
+                    # Ajouter des petits indicateurs colorés pour chaque tâche
+                    for i, color in enumerate(colors):
+                        offset_x = due_date + (i - len(colors)/2 + 0.5) * 0.3  # Décalage horizontal
+                        ax.plot(offset_x, -0.8, 'o', color=color, markersize=6, zorder=12)
     
     # Améliorer les axes
     ax.set_xlabel(f"Temps ({unite})", fontsize=12, fontweight='bold')
