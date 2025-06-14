@@ -462,16 +462,16 @@ def run_contraintes(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         
-        # Utiliser la fonction unifiée qui détecte automatiquement le type
+        # Mode flowshop classique uniquement (une machine par étape)
         result = contraintes.flowshop_contraintes(
             request.jobs_data, 
             request.due_dates,
             request.job_names, 
             request.machine_names,
-            getattr(request, 'machines_per_stage', None)
+            None  # machines_per_stage = None pour flowshop classique
         )
         
-        # Mode classique uniquement : ajuster les noms pour les machines
+        # Ajuster les noms pour les machines
         machine_names_to_use = request.machine_names or [f"Machine {i+1}" for i in range(len(request.jobs_data[0]))]
         return {
             "makespan": result["makespan"],
@@ -490,19 +490,16 @@ def run_contraintes_gantt(request: ExtendedRequest):
     try:
         validate_jobs_data(request.jobs_data, request.due_dates)
         
-        # Utiliser la fonction unifiée comme dans l'endpoint principal
+        # Mode flowshop classique uniquement (une machine par étape)
         result = contraintes.flowshop_contraintes(
             request.jobs_data, 
             request.due_dates,
             request.job_names, 
             request.machine_names,
-            getattr(request, 'machines_per_stage', None)
+            None  # machines_per_stage = None pour flowshop classique
         )
         
-        # Mode classique uniquement
-        machines_data = result
-        
-        fig = create_gantt_figure(machines_data, "Diagramme de Gantt - Contraintes (CP)",
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)",
                                   unite=request.unite,
                                   job_names=request.job_names,
                                   machine_names=request.machine_names)
