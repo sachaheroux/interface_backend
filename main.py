@@ -132,49 +132,29 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
         time_step = max(1, int(max_time / 20))  # Environ 20 divisions avec des entiers
         time_ticks = np.arange(0, int(max_time) + time_step + 1, time_step)
         
-        # Grille verticale et horizontale
+        # Grille verticale et horizontale très foncée
         ax.set_xticks(time_ticks)
-        ax.grid(True, axis='x', alpha=0.6, linestyle='-', linewidth=0.8, color='#dee2e6')
-        ax.grid(True, axis='y', alpha=0.3, linestyle='-', linewidth=0.5, color='#dee2e6')
+        ax.grid(True, axis='x', alpha=1.0, linestyle='-', linewidth=1.2, color='#6c757d')
+        ax.grid(True, axis='y', alpha=0.8, linestyle='-', linewidth=1.0, color='#6c757d')
         ax.set_axisbelow(True)
         
-        # Colorer les cases de l'axe du temps selon les dates dues
+        # Afficher les dates dues sous l'axe du temps
         if due_date_colors:
-            # Obtenir les limites de l'axe y (après avoir dessiné les tâches)
-            y_min, y_max = ax.get_ylim()
+            # Créer des étiquettes normales pour l'axe x
+            x_labels = [str(int(tick)) for tick in time_ticks]
+            ax.set_xticklabels(x_labels)
             
-            # Créer une bande colorée en haut du graphique pour les dates dues
+            # Ajouter les dates dues sous l'axe du temps
             for due_date, color in due_date_colors.items():
                 if due_date <= max_time:
-                    # Trouver l'intervalle de temps qui contient la date due
-                    interval_found = False
-                    for i in range(len(time_ticks) - 1):
-                        if time_ticks[i] <= due_date <= time_ticks[i + 1]:
-                            # Colorer la case de l'axe du temps (en haut du graphique)
-                            rect_height = 0.4
-                            rect = patches.Rectangle((time_ticks[i], y_max), 
-                                                   time_ticks[i + 1] - time_ticks[i], rect_height,
-                                                   facecolor=color, alpha=0.8, edgecolor='white', linewidth=1.5,
-                                                   zorder=10)
-                            ax.add_patch(rect)
-                            
-                            # Ajouter le texte de la date due
-                            ax.text(due_date, y_max + rect_height/2, f'Due: {due_date:.1f}',
-                                   ha='center', va='center', fontsize=8, fontweight='bold',
-                                   color='white', rotation=0, zorder=11)
-                            interval_found = True
-                            break
+                    # Ajouter une ligne verticale pour marquer la date due
+                    ax.axvline(x=due_date, color=color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
                     
-                    # Si pas d'intervalle trouvé, créer une ligne verticale à la date due exacte
-                    if not interval_found:
-                        ax.axvline(x=due_date, color=color, linestyle='--', linewidth=3, alpha=0.8, zorder=5)
-                        ax.text(due_date, y_max + 0.2, f'Due: {due_date:.1f}',
-                               ha='center', va='bottom', fontsize=8, fontweight='bold',
-                               color=color, rotation=90, zorder=11)
-        
-        # Ajuster les limites de l'axe y pour faire de la place aux dates dues
-        if due_date_colors:
-            ax.set_ylim(y_min, y_max + 0.6)
+                    # Ajouter le texte de la date due sous l'axe x
+                    ax.text(due_date, -0.5, f'Due: {int(due_date)}',
+                           ha='center', va='top', fontsize=9, fontweight='bold',
+                           color=color, rotation=0, zorder=11,
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.2, edgecolor=color))
     
     # Améliorer les axes
     ax.set_xlabel(f"Temps ({unite})", fontsize=12, fontweight='bold')
