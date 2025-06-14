@@ -125,19 +125,12 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
                 ax.text(t["start"] + t["duration"] / 2, label, job_label,
                        va="center", ha="center", color=text_color, fontsize=9, 
                        fontweight='bold', zorder=10)
-                
-                # Ajouter les temps de début et fin en petits caractères
-                if t["duration"] > 2:  # Seulement si la barre est assez large
-                    ax.text(t["start"] + 0.1, label, f'{t["start"]:.1f}',
-                           va="center", ha="left", color=text_color, fontsize=7, alpha=0.8)
-                    ax.text(t["start"] + t["duration"] - 0.1, label, f'{t["start"] + t["duration"]:.1f}',
-                           va="center", ha="right", color=text_color, fontsize=7, alpha=0.8)
 
     # Créer un cadrillage avec coloration des cases selon les dates dues
     if max_time > 0:
-        # Définir les intervalles de temps pour le cadrillage (plus fins)
-        time_step = max(1, max_time / 30)  # Environ 30 divisions pour plus de précision
-        time_ticks = np.arange(0, max_time + time_step, time_step)
+        # Définir les intervalles de temps pour le cadrillage avec des nombres entiers
+        time_step = max(1, int(max_time / 20))  # Environ 20 divisions avec des entiers
+        time_ticks = np.arange(0, int(max_time) + time_step + 1, time_step)
         
         # Grille verticale et horizontale
         ax.set_xticks(time_ticks)
