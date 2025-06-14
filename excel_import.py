@@ -157,13 +157,26 @@ def parse_matrix_format(file_content: bytes) -> Dict:
                 detail="Aucun job valide trouvé. Vérifiez que vous avez rempli les noms de jobs et au moins une durée par job."
             )
         
-        # Déterminer le nombre de machines utilisées
+        # Lire les noms des machines depuis les en-têtes (ligne 5, colonnes D-M)
+        machine_names = []
+        for j in range(3, 13):  # colonnes D à M (index 3-12)
+            try:
+                header = df.iloc[4, j]  # ligne 5 (index 4)
+                if pd.notna(header) and str(header).strip():
+                    machine_names.append(str(header).strip())
+                else:
+                    machine_names.append(f"Machine_{j-3}")
+            except:
+                machine_names.append(f"Machine_{j-3}")
+        
+        # Déterminer le nombre de machines réellement utilisées
         max_machine_id = 0
         for job in jobs_data:
             for machine_id, _ in job:
                 max_machine_id = max(max_machine_id, machine_id)
         
-        machine_names = [f"Machine_{i}" for i in range(max_machine_id + 1)]
+        # Garder seulement les noms des machines utilisées
+        machine_names = machine_names[:max_machine_id + 1]
         
         return {
             "jobs_data": jobs_data,
