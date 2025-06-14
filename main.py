@@ -1469,10 +1469,16 @@ async def import_smith_excel(file: UploadFile = File(...)):
         parsed_data = excel_import.parse_flowshop_excel(file_content)
         
         # Convertir au format Smith (List[List[float]] avec 1 seule durée par job)
+        # Smith utilise seulement la première machine, on ignore les autres
         smith_jobs_data = []
-        for job in parsed_data["jobs_data"]:
+        for job_index, job in enumerate(parsed_data["jobs_data"]):
             if len(job) > 0:
-                smith_jobs_data.append([job[0][1]])  # Prendre seulement la première durée
+                # Prendre seulement la première durée (première machine)
+                first_duration = job[0][1]  # [machine_id, duration] -> duration
+                smith_jobs_data.append([first_duration])
+            else:
+                job_name = parsed_data["job_names"][job_index] if job_index < len(parsed_data["job_names"]) else f"Job {job_index}"
+                raise ValueError(f"Le job '{job_name}' ne contient aucune durée.")
         
         # Valider les données spécifiquement pour Smith
         validate_smith_data(smith_jobs_data, parsed_data["job_names"])
@@ -1480,9 +1486,15 @@ async def import_smith_excel(file: UploadFile = File(...)):
         # Exécuter l'algorithme Smith
         result = smith.smith_algorithm(smith_jobs_data)
         
+        # Message informatif si plusieurs machines détectées
+        machines_detected = len(parsed_data["machine_names"])
+        info_message = f"Fichier '{file.filename}' importé et traité avec succès"
+        if machines_detected > 1:
+            info_message += f" (Smith utilise seulement la première machine '{parsed_data['machine_names'][0]}', les {machines_detected-1} autres machines sont ignorées)"
+        
         return {
             "success": True,
-            "message": f"Fichier '{file.filename}' importé et traité avec succès",
+            "message": info_message,
             "imported_data": {
                 "job_names": parsed_data["job_names"],
                 "machine_names": [parsed_data["machine_names"][0]] if parsed_data["machine_names"] else ["Machine 0"],
@@ -1555,64 +1567,4 @@ async def import_contraintes_excel(file: UploadFile = File(...)):
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
-
-# ----------- Import Excel pour EDD -----------
-
-@app.post("/edd/import-excel")
-async def import_edd_excel(file: UploadFile = File(...)):
-    """Import de données EDD depuis un fichier Excel et exécution de l'algorithme"""
-    try:
-        # Vérifier le type de fichier
-        if not file.filename.endswith(('.xlsx', '.xls')):
-            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
-        
-        # Lire et parser le fichier
-        file_content = await file.read()
-        parsed_data = excel_import.parse_flowshop_excel(file_content)
-        
-        # Convertir au format EDD (List[List[float]] au lieu de List[List[List[float]]])
-        edd_jobs_data = []
-        for job in parsed_data["jobs_data"]:
-            job_durations = [task[1] for task in job]  # Extraire seulement les durées
-            edd_jobs_data.append(job_durations)
-        
-        # Valider les données
-        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
-        
-        # Exécuter l'algorithme EDD
-        result = edd.schedule(edd_jobs_data, parsed_data["due_dates"])
-        
-        return {
-            "success": True,
-            "message": f"Fichier '{file.filename}' importé et traité avec succès",
-            "imported_data": {
-                "job_names": parsed_data["job_names"],
-                "machine_names": parsed_data["machine_names"],
-                "jobs_data": edd_jobs_data,
-                "due_dates": parsed_data["due_dates"],
-                "unite": parsed_data["unite"],
-                "jobs_count": len(edd_jobs_data),
-                "machines_count": len(parsed_data["machine_names"])
-            },
-            "results": {
-                "sequence": result["sequence"],
-                "makespan": result["makespan"],
-                "flowtime": result["flowtime"],
-                "retard_cumule": result["retard_cumule"],
-                "completion_times": result["completion_times"],
-                "planification": {parsed_data["machine_names"][int(m)]: tasks for m, tasks in result["machines"].items()}
-            }
-        }
-        
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
-
-
-
-
-
-
-
 
