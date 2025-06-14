@@ -1468,20 +1468,20 @@ async def import_smith_excel(file: UploadFile = File(...)):
         file_content = await file.read()
         parsed_data = excel_import.parse_flowshop_excel(file_content)
         
-        # Convertir au format Smith (List[List[float]] avec 1 seule durée par job)
+        # Convertir au format Smith (List[List[float]] avec [durée, due_date] par job)
         # Smith utilise seulement la première machine, on ignore les autres
         smith_jobs_data = []
         for job_index, job in enumerate(parsed_data["jobs_data"]):
             if len(job) > 0:
                 # Prendre seulement la première durée (première machine)
                 first_duration = job[0][1]  # [machine_id, duration] -> duration
-                smith_jobs_data.append([first_duration])
+                due_date = parsed_data["due_dates"][job_index]
+                smith_jobs_data.append([first_duration, due_date])
             else:
                 job_name = parsed_data["job_names"][job_index] if job_index < len(parsed_data["job_names"]) else f"Job {job_index}"
                 raise ValueError(f"Le job '{job_name}' ne contient aucune durée.")
         
-        # Valider les données spécifiquement pour Smith
-        validate_smith_data(smith_jobs_data, parsed_data["job_names"])
+        # Pas besoin de validation spéciale pour Smith car l'algorithme fait sa propre validation
         
         # Exécuter l'algorithme Smith
         result = smith.smith_algorithm(smith_jobs_data)
@@ -1499,6 +1499,7 @@ async def import_smith_excel(file: UploadFile = File(...)):
                 "job_names": parsed_data["job_names"],
                 "machine_names": [parsed_data["machine_names"][0]] if parsed_data["machine_names"] else ["Machine 0"],
                 "jobs_data": smith_jobs_data,
+                "due_dates": parsed_data["due_dates"],
                 "unite": parsed_data["unite"],
                 "jobs_count": len(smith_jobs_data),
                 "machines_count": 1
