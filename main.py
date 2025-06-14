@@ -57,9 +57,10 @@ except Exception as e:
 
 def create_gantt_figure(result, title: str, unite="heures", job_names=None, machine_names=None, due_dates=None):
     """
-    Crée un diagramme de Gantt professionnel avec couleurs basées sur les dates dues
+    Crée un diagramme de Gantt professionnel avec couleurs différentes par tâche et cadrillage
     """
     import matplotlib.patches as patches
+    import numpy as np
     
     # Calculer la taille optimale selon le nombre de machines
     num_machines = len(result["machines"])
@@ -70,38 +71,9 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     ax.set_facecolor('#f8f9fa')
     fig.patch.set_facecolor('white')
     
-    # Grille de fond pour une meilleure lisibilité
-    ax.grid(True, axis='x', alpha=0.3, linestyle='-', linewidth=0.5)
-    ax.set_axisbelow(True)
-    
-    # Calculer les temps de complétion pour déterminer les couleurs
-    completion_times = {}
-    if "completion_times" in result:
-        completion_times = result["completion_times"]
-    else:
-        # Calculer les temps de complétion à partir des machines
-        for m, tasks in result["machines"].items():
-            for t in tasks:
-                job_idx = t["job"]
-                end_time = t["start"] + t["duration"]
-                if job_idx not in completion_times or end_time > completion_times[job_idx]:
-                    completion_times[job_idx] = end_time
-    
-    def get_due_date_color(job_idx, completion_time):
-        """Détermine la couleur basée sur la date due"""
-        if not due_dates or job_idx >= len(due_dates):
-            return "#6c757d"  # Gris par défaut
-        
-        due_date = due_dates[job_idx]
-        if completion_time <= due_date:
-            # En avance ou à l'heure : vert
-            return "#28a745"
-        elif completion_time <= due_date * 1.1:  # 10% de tolérance
-            # Légèrement en retard : orange
-            return "#fd7e14"
-        else:
-            # En retard : rouge
-            return "#dc3545"
+    # Couleurs différentes pour chaque tâche
+    colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316", 
+              "#06b6d4", "#84cc16", "#f43f5e", "#8b5a2b", "#6b7280", "#ec4899", "#3b82f6", "#22c55e"]
     
     # Trier les machines par index pour un affichage cohérent
     sorted_machines = sorted(result["machines"].items(), key=lambda x: int(x[0]))
@@ -109,6 +81,21 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     # Hauteur des barres
     bar_height = 0.6
     
+    # Calculer le temps maximum pour définir la grille
+    max_time = 0
+    for m, tasks in result["machines"].items():
+        for t in tasks:
+            max_time = max(max_time, t["start"] + t["duration"])
+    
+    # Créer un mapping des dates dues vers les couleurs des tâches
+    due_date_colors = {}
+    if due_dates:
+        for job_idx, due_date in enumerate(due_dates):
+            if due_date and due_date > 0:
+                job_color = colors[job_idx % len(colors)]
+                due_date_colors[due_date] = job_color
+    
+    # Dessiner les tâches
     for m_idx, (m, tasks) in enumerate(sorted_machines):
         label = machine_names[int(m)] if machine_names and int(m) < len(machine_names) else f"Machine {int(m)}"
         
@@ -117,14 +104,13 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
             ax.barh(label, 0, left=0, color='#e9ecef', alpha=0.5, height=0.2, 
                    edgecolor='#6c757d', linewidth=0.5)
         else:
-            # Machine avec tâches : afficher avec style professionnel
+            # Machine avec tâches : afficher avec couleurs différentes par tâche
             for t in tasks:
                 job_idx = t["job"] if isinstance(t["job"], int) else job_names.index(t["job"])
                 job_label = job_names[job_idx] if job_names else f"J{job_idx}"
                 
-                # Couleur basée sur la date due
-                completion_time = completion_times.get(job_idx, t["start"] + t["duration"])
-                color = get_due_date_color(job_idx, completion_time)
+                # Couleur différente pour chaque tâche
+                color = colors[job_idx % len(colors)]
                 
                 # Créer la barre avec bordure
                 bar = ax.barh(label, t["duration"], left=t["start"], color=color, 
@@ -135,7 +121,7 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
                                height=bar_height, alpha=0.1, zorder=0)
                 
                 # Texte du job avec style amélioré
-                text_color = 'white' if color in ['#28a745', '#dc3545'] else 'white'
+                text_color = 'white'
                 ax.text(t["start"] + t["duration"] / 2, label, job_label,
                        va="center", ha="center", color=text_color, fontsize=9, 
                        fontweight='bold', zorder=10)
@@ -147,6 +133,40 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
                     ax.text(t["start"] + t["duration"] - 0.1, label, f'{t["start"] + t["duration"]:.1f}',
                            va="center", ha="right", color=text_color, fontsize=7, alpha=0.8)
 
+    # Créer un cadrillage avec coloration des cases selon les dates dues
+    if max_time > 0:
+        # Définir les intervalles de temps pour le cadrillage
+        time_step = max(1, int(max_time / 20))  # Environ 20 divisions
+        time_ticks = np.arange(0, max_time + time_step, time_step)
+        
+        # Grille verticale principale
+        ax.set_xticks(time_ticks)
+        ax.grid(True, axis='x', alpha=0.6, linestyle='-', linewidth=0.8, color='#dee2e6')
+        ax.grid(True, axis='y', alpha=0.3, linestyle='-', linewidth=0.5, color='#dee2e6')
+        ax.set_axisbelow(True)
+        
+        # Colorer les cases de l'axe du temps selon les dates dues
+        if due_date_colors:
+            # Obtenir les limites de l'axe y
+            y_min, y_max = ax.get_ylim()
+            
+            for due_date, color in due_date_colors.items():
+                if due_date <= max_time:
+                    # Trouver l'intervalle de temps qui contient la date due
+                    for i in range(len(time_ticks) - 1):
+                        if time_ticks[i] <= due_date < time_ticks[i + 1]:
+                            # Colorer la case de l'axe du temps
+                            rect = patches.Rectangle((time_ticks[i], y_max - 0.3), 
+                                                   time_ticks[i + 1] - time_ticks[i], 0.3,
+                                                   facecolor=color, alpha=0.7, edgecolor='white', linewidth=1)
+                            ax.add_patch(rect)
+                            
+                            # Ajouter le texte de la date due
+                            ax.text(due_date, y_max - 0.15, f'Due: {due_date}',
+                                   ha='center', va='center', fontsize=8, fontweight='bold',
+                                   color='white', rotation=0)
+                            break
+    
     # Améliorer les axes
     ax.set_xlabel(f"Temps ({unite})", fontsize=12, fontweight='bold')
     ax.set_ylabel("Machines", fontsize=12, fontweight='bold')
@@ -155,16 +175,15 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     # Titre avec style
     ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
     
-    # Créer la légende pour les couleurs des dates dues
-    legend_elements = [
-        patches.Patch(color='#28a745', label='À temps (≤ date due)'),
-        patches.Patch(color='#fd7e14', label='Légèrement en retard (≤ 110% date due)'),
-        patches.Patch(color='#dc3545', label='En retard (> 110% date due)'),
-        patches.Patch(color='#6c757d', label='Pas de date due')
-    ]
-    
-    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
-             frameon=True, fancybox=True, shadow=True, fontsize=9)
+    # Créer la légende pour les tâches (si on a les noms des jobs)
+    if job_names and len(job_names) <= 8:  # Limiter la légende si trop de jobs
+        legend_elements = []
+        for i, job_name in enumerate(job_names):
+            color = colors[i % len(colors)]
+            legend_elements.append(patches.Patch(color=color, label=job_name))
+        
+        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
+                 frameon=True, fancybox=True, shadow=True, fontsize=9)
     
     # Ajuster les marges
     plt.tight_layout()
