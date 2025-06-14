@@ -1512,6 +1512,59 @@ async def import_smith_excel(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
 
+@app.post("/smith/import-excel-gantt")
+async def import_smith_excel_gantt(file: UploadFile = File(...)):
+    """Import de données Smith depuis un fichier Excel et génération du diagramme de Gantt"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Convertir au format Smith (List[List[float]] avec [durée, due_date] par job)
+        # Smith utilise seulement la première machine, on ignore les autres
+        smith_jobs_data = []
+        for job_index, job in enumerate(parsed_data["jobs_data"]):
+            if len(job) > 0:
+                # Prendre seulement la première durée (première machine)
+                first_duration = job[0][1]  # [machine_id, duration] -> duration
+                due_date = parsed_data["due_dates"][job_index]
+                smith_jobs_data.append([first_duration, due_date])
+            else:
+                job_name = parsed_data["job_names"][job_index] if job_index < len(parsed_data["job_names"]) else f"Job {job_index}"
+                raise ValueError(f"Le job '{job_name}' ne contient aucune durée.")
+        
+        # Exécuter l'algorithme Smith
+        result = smith.smith_algorithm(smith_jobs_data)
+        
+        # Générer le diagramme de Gantt
+        machines_detected = len(parsed_data["machine_names"])
+        title = "Diagramme de Gantt - Smith (Import Excel)"
+        if machines_detected > 1:
+            title += f" - Utilise seulement '{parsed_data['machine_names'][0]}'"
+        
+        fig = smith.generate_gantt(
+            result["sequence"], 
+            smith_jobs_data,
+            unite=parsed_data["unite"],
+            job_names=parsed_data["job_names"]
+        )
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        
+        return StreamingResponse(buf, media_type="image/png")
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et de la génération du Gantt: {str(e)}")
+
 # ----------- Import Excel pour Contraintes -----------
 
 @app.post("/contraintes/import-excel")
