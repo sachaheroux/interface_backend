@@ -138,48 +138,58 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
         ax.grid(True, axis='y', alpha=0.8, linestyle='-', linewidth=1.0, color='#6c757d')
         ax.set_axisbelow(True)
         
-        # Afficher les dates dues sous l'axe du temps
+        # Afficher les dates dues empilées en haut du graphique
         if due_date_colors:
             # Créer des étiquettes normales pour l'axe x
             x_labels = [str(int(tick)) for tick in time_ticks]
             ax.set_xticklabels(x_labels)
             
-            # Grouper les dates dues par valeur pour gérer les doublons
-            due_dates_grouped = {}
-            for due_date, color in due_date_colors.items():
-                if due_date <= max_time:
-                    if due_date not in due_dates_grouped:
-                        due_dates_grouped[due_date] = []
-                    due_dates_grouped[due_date].append(color)
+            # Obtenir les limites actuelles de l'axe y
+            y_min, y_max = ax.get_ylim()
             
-            # Ajouter les dates dues sous l'axe du temps
-            for due_date, colors in due_dates_grouped.items():
+            # Grouper les dates dues par position pour les empiler
+            due_dates_at_position = {}
+            job_names_for_due_dates = []
+            
+            for i, (due_date, color) in enumerate(due_date_colors.items()):
+                if due_date <= max_time:
+                    if due_date not in due_dates_at_position:
+                        due_dates_at_position[due_date] = []
+                    
+                    # Trouver le nom du job correspondant
+                    job_name = job_names[i] if job_names and i < len(job_names) else f'J{i+1}'
+                    due_dates_at_position[due_date].append((color, job_name))
+            
+            # Afficher les dates dues empilées en haut du graphique
+            max_stack_height = 0
+            for due_date, job_info_list in due_dates_at_position.items():
                 # Ajouter une ligne verticale pour marquer la date due
-                # Si plusieurs couleurs, utiliser la première comme couleur principale
-                main_color = colors[0]
+                main_color = job_info_list[0][0]  # Couleur du premier job
                 ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
                 
-                if len(colors) == 1:
-                    # Une seule tâche avec cette date due
-                    ax.text(due_date, -0.5, f'Due: {int(due_date)}',
-                           ha='center', va='top', fontsize=9, fontweight='bold',
-                           color=colors[0], rotation=0, zorder=11,
-                           bbox=dict(boxstyle="round,pad=0.3", facecolor=colors[0], alpha=0.2, edgecolor=colors[0]))
-                else:
-                    # Plusieurs tâches avec la même date due
-                    # Créer un texte combiné avec les couleurs
-                    combined_text = f'Due: {int(due_date)} ({len(colors)} jobs)'
+                # Empiler les dates dues verticalement en haut
+                for i, (color, job_name) in enumerate(job_info_list):
+                    y_position = y_max + 0.3 + (i * 0.5)  # Empiler vers le haut
                     
-                    # Utiliser un dégradé ou une couleur mixte pour l'encadré
-                    ax.text(due_date, -0.5, combined_text,
-                           ha='center', va='top', fontsize=9, fontweight='bold',
-                           color='black', rotation=0, zorder=11,
-                           bbox=dict(boxstyle="round,pad=0.3", facecolor='lightgray', alpha=0.8, edgecolor='black'))
+                    # Texte pour chaque job
+                    text = f'{job_name}: {int(due_date)}'
                     
-                    # Ajouter des petits indicateurs colorés pour chaque tâche
-                    for i, color in enumerate(colors):
-                        offset_x = due_date + (i - len(colors)/2 + 0.5) * 0.3  # Décalage horizontal
-                        ax.plot(offset_x, -0.8, 'o', color=color, markersize=6, zorder=12)
+                    # Boîte colorée avec la couleur du job
+                    bbox_props = dict(boxstyle='round,pad=0.2', facecolor=color, alpha=0.8, 
+                                    edgecolor='black', linewidth=1)
+                    
+                    # Ajouter le texte de la date due en haut
+                    ax.text(due_date, y_position, text,
+                           ha='center', va='center', fontsize=8, fontweight='bold',
+                           color='white', rotation=0, zorder=11,
+                           bbox=bbox_props)
+                
+                # Mettre à jour la hauteur maximale de l'empilement
+                max_stack_height = max(max_stack_height, len(job_info_list))
+            
+            # Ajuster les limites de l'axe y pour faire de la place aux dates dues
+            if max_stack_height > 0:
+                ax.set_ylim(y_min, y_max + 0.5 + (max_stack_height * 0.5))
     
     # Améliorer les axes
     ax.set_xlabel(f"Temps ({unite})", fontsize=12, fontweight='bold')
@@ -193,10 +203,12 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     if job_names and len(job_names) <= 8:  # Limiter la légende si trop de jobs
         legend_elements = []
         for i, job_name in enumerate(job_names):
+            # Utiliser la même logique de couleur que pour les barres
             color = colors[i % len(colors)]
             legend_elements.append(patches.Patch(color=color, label=job_name))
         
-        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
+        # Positionner la légende en bas à droite pour éviter les dates dues en haut
+        ax.legend(handles=legend_elements, loc='lower right', bbox_to_anchor=(1, 0), 
                  frameon=True, fancybox=True, shadow=True, fontsize=9)
     
     # Ajuster les marges
@@ -275,9 +287,10 @@ def run_jobshop_spt_gantt(request: JobshopSPTRequest):
         fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop SPT",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -310,9 +323,10 @@ def run_jobshop_edd_gantt(request: JobshopSPTRequest):
         fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop EDD",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
