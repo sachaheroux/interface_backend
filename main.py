@@ -55,6 +55,36 @@ except Exception as e:
 
 # ----------- Gantt utilitaire -----------
 
+def get_nice_time_intervals(max_time):
+    """
+    Retourne des intervalles de temps 'ronds' pour le cadrillage
+    """
+    # Valeurs rondes prédéfinies
+    nice_values = [1, 2, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250, 300, 350, 400, 450, 500, 750, 1000]
+    
+    # Trouver la valeur qui donne environ 10-20 divisions
+    target_divisions = 15  # Nombre idéal de divisions
+    ideal_step = max_time / target_divisions
+    
+    # Trouver la valeur ronde la plus proche
+    best_step = nice_values[0]
+    for value in nice_values:
+        if value >= ideal_step:
+            best_step = value
+            break
+        best_step = value  # Garder la dernière valeur si aucune n'est assez grande
+    
+    # Si max_time est très grand, multiplier par des facteurs
+    if best_step < ideal_step and max_time > 1000:
+        multipliers = [2, 5, 10, 20, 50, 100]
+        for mult in multipliers:
+            candidate = best_step * mult
+            if candidate >= ideal_step:
+                best_step = candidate
+                break
+    
+    return best_step
+
 def create_gantt_figure(result, title: str, unite="heures", job_names=None, machine_names=None, due_dates=None):
     """
     Crée un diagramme de Gantt professionnel avec couleurs différentes par tâche et cadrillage
@@ -129,7 +159,7 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     # Créer un cadrillage avec coloration des cases selon les dates dues
     if max_time > 0:
         # Définir les intervalles de temps pour le cadrillage avec des nombres entiers
-        time_step = max(1, int(max_time / 20))  # Environ 20 divisions avec des entiers
+        time_step = get_nice_time_intervals(max_time)  # Utiliser la nouvelle fonction
         time_ticks = np.arange(0, int(max_time) + time_step + 1, time_step)
         
         # Grille verticale et horizontale très foncée
