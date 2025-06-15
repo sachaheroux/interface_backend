@@ -93,7 +93,7 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
         for job_idx, due_date in enumerate(due_dates):
             if due_date and due_date > 0:
                 job_color = colors[job_idx % len(colors)]
-                due_date_colors[due_date] = job_color
+                due_date_colors[due_date] = (job_color, job_idx)
     
     # Dessiner les tâches
     for m_idx, (m, tasks) in enumerate(sorted_machines):
@@ -149,15 +149,14 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
             
             # Grouper les dates dues par position pour les empiler
             due_dates_at_position = {}
-            job_names_for_due_dates = []
             
-            for i, (due_date, color) in enumerate(due_date_colors.items()):
+            for due_date, (color, job_idx) in due_date_colors.items():
                 if due_date <= max_time:
                     if due_date not in due_dates_at_position:
                         due_dates_at_position[due_date] = []
                     
                     # Trouver le nom du job correspondant
-                    job_name = job_names[i] if job_names and i < len(job_names) else f'J{i+1}'
+                    job_name = job_names[job_idx] if job_names and job_idx < len(job_names) else f'J{job_idx+1}'
                     due_dates_at_position[due_date].append((color, job_name))
             
             # Afficher les dates dues empilées en haut du graphique
