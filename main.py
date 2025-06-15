@@ -189,16 +189,18 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
                     job_name = job_names[job_idx] if job_names and job_idx < len(job_names) else f'J{job_idx+1}'
                     due_dates_at_position[due_date].append((color, job_name))
             
-            # Afficher les dates dues empilées en haut du graphique
+            # Afficher les dates dues empilées AU-DESSUS de la Machine 0
             max_stack_height = 0
             for due_date, job_info_list in due_dates_at_position.items():
                 # Ajouter une ligne verticale pour marquer la date due
                 main_color = job_info_list[0][0]  # Couleur du premier job
                 ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
                 
-                # Empiler les dates dues verticalement en haut
+                # Empiler les dates dues verticalement AU-DESSUS de la Machine 0
+                # Comme l'axe Y est inversé, y_min correspond au haut du graphique
                 for i, (color, job_name) in enumerate(job_info_list):
-                    y_position = y_max + 0.3 + (i * 0.5)  # Empiler vers le haut
+                    # Position au-dessus de la Machine 0 (utiliser y_min car l'axe est inversé)
+                    y_position = y_min - 0.3 - (i * 0.5)  # Empiler vers le haut au-dessus de Machine 0
                     
                     # Texte pour chaque job
                     text = f'{job_name}: {int(due_date)}'
@@ -207,7 +209,7 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
                     bbox_props = dict(boxstyle='round,pad=0.2', facecolor=color, alpha=0.8, 
                                     edgecolor='black', linewidth=1)
                     
-                    # Ajouter le texte de la date due en haut
+                    # Ajouter le texte de la date due au-dessus de Machine 0
                     ax.text(due_date, y_position, text,
                            ha='center', va='center', fontsize=8, fontweight='bold',
                            color='white', rotation=0, zorder=11,
@@ -216,9 +218,10 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
                 # Mettre à jour la hauteur maximale de l'empilement
                 max_stack_height = max(max_stack_height, len(job_info_list))
             
-            # Ajuster les limites de l'axe y pour faire de la place aux dates dues
+            # Ajuster les limites de l'axe y pour faire de la place aux dates dues AU-DESSUS
             if max_stack_height > 0:
-                ax.set_ylim(y_min, y_max + 0.5 + (max_stack_height * 0.5))
+                # Étendre vers le haut pour les due dates (réduire y_min car l'axe est inversé)
+                ax.set_ylim(y_min - 0.5 - (max_stack_height * 0.5), y_max)
     
     # Améliorer les axes
     ax.set_xlabel(f"Temps ({unite})", fontsize=12, fontweight='bold')
