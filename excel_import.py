@@ -495,6 +495,301 @@ def create_flowshop_template(template_type: str = "exemple") -> bytes:
     
     return output.getvalue()
 
+def parse_jobshop_excel(file_content: bytes) -> Dict:
+    """
+    Parse un fichier Excel pour les algorithmes Jobshop (SPT, EDD, Contraintes)
+    Format spécifique avec cellules (séquence, temps)
+    
+    Args:
+        file_content: Contenu du fichier Excel en bytes
+        
+    Returns:
+        Dict contenant les données formatées pour l'API Jobshop
+    """
+    try:
+        # Lire le fichier Excel
+        excel_file = io.BytesIO(file_content)
+        df = pd.read_excel(excel_file, header=None)
+        
+        # Vérifier la structure minimale
+        if df.shape[0] < 20 or df.shape[1] < 14:
+            raise ValueError("Structure de fichier incorrecte")
+        
+        # Vérifier que c'est bien le format Jobshop (cellule C5 doit contenir "Job")
+        job_header = df.iloc[4, 2]  # C5 (ligne 5, colonne C)
+        if pd.isna(job_header) or str(job_header).strip().lower() != "job":
+            raise ValueError("Format non reconnu - cellule C5 doit contenir 'Job'")
+        
+        # Extraire l'unité de temps (cellule C20)
+        unite = "heures"  # valeur par défaut
+        try:
+            unite_cell = df.iloc[19, 2]  # C20
+            if pd.notna(unite_cell):
+                unite_str = str(unite_cell).lower().strip()
+                if unite_str == 'j':
+                    unite = "jours"
+                elif unite_str == 'h':
+                    unite = "heures"
+                elif unite_str == 'm':
+                    unite = "minutes"
+        except:
+            pass
+        
+        # Extraire les données des jobs
+        job_names = []
+        jobs_data = []
+        due_dates = []
+        errors = []
+        
+        # Parcourir les lignes 6-15 (index 5-14) pour les jobs
+        for i in range(5, 15):
+            row_num = i + 1  # Numéro de ligne Excel (1-indexé)
+            
+            # Nom du job (colonne C)
+            job_name = df.iloc[i, 2]
+            if pd.isna(job_name) or not str(job_name).strip():
+                continue  # Ligne vide, on passe
+            
+            job_name = str(job_name).strip()
+            
+            # Extraire les tâches du job (colonnes D-M, index 3-12)
+            job_tasks = []
+            task_errors = []
+            
+            for j in range(3, 13):  # colonnes D à M
+                col_letter = chr(68 + j - 3)  # D, E, F, G, H, I, J, K, L, M
+                cell_value = df.iloc[i, j]
+                
+                if pd.notna(cell_value) and str(cell_value).strip():
+                    try:
+                        # Parser le format (séquence, temps)
+                        cell_str = str(cell_value).strip()
+                        
+                        # Enlever les parenthèses et espaces
+                        if cell_str.startswith('(') and cell_str.endswith(')'):
+                            cell_str = cell_str[1:-1]
+                        
+                        # Séparer par la virgule
+                        parts = cell_str.split(',')
+                        if len(parts) != 2:
+                            task_errors.append(f"Format invalide en {col_letter}{row_num}: '{cell_value}' (attendu: séquence, temps)")
+                            continue
+                        
+                        sequence = int(float(parts[0].strip()))
+                        duration = float(parts[1].strip())
+                        
+                        if sequence < 1:
+                            task_errors.append(f"Séquence invalide en {col_letter}{row_num}: {sequence} (doit être >= 1)")
+                            continue
+                        
+                        if duration <= 0:
+                            task_errors.append(f"Durée invalide en {col_letter}{row_num}: {duration} (doit être > 0)")
+                            continue
+                        
+                        # Ajouter la tâche [machine_id, duration] avec la séquence
+                        machine_id = j - 3  # Machine 0, 1, 2, etc.
+                        job_tasks.append({
+                            'sequence': sequence,
+                            'machine': machine_id,
+                            'duration': duration
+                        })
+                        
+                    except (ValueError, TypeError) as e:
+                        task_errors.append(f"Erreur en {col_letter}{row_num}: '{cell_value}' - {str(e)}")
+            
+            # Vérifier la date due (colonne N, index 13)
+            due_date = df.iloc[i, 13]
+            due_date_val = 10.0  # valeur par défaut
+            
+            if pd.notna(due_date) and str(due_date).strip():
+                try:
+                    due_date_val = float(due_date)
+                    if due_date_val < 0:
+                        errors.append(f"Date due négative pour '{job_name}' en N{row_num}: {due_date}")
+                        due_date_val = 10.0
+                except (ValueError, TypeError):
+                    errors.append(f"Date due invalide pour '{job_name}' en N{row_num}: '{due_date}' (doit être un nombre)")
+                    due_date_val = 10.0
+            
+            # Ajouter les erreurs de tâches si il y en a
+            if task_errors:
+                errors.extend([f"Job '{job_name}': {err}" for err in task_errors])
+            
+            # Trier les tâches par séquence et convertir au format API
+            if job_tasks:
+                # Trier par séquence
+                job_tasks.sort(key=lambda x: x['sequence'])
+                
+                # Convertir au format API [machine, duration]
+                formatted_tasks = [[task['machine'], task['duration']] for task in job_tasks]
+                
+                job_names.append(job_name)
+                jobs_data.append(formatted_tasks)
+                due_dates.append(due_date_val)
+            elif not task_errors:  # Pas d'erreurs mais pas de tâches non plus
+                errors.append(f"Job '{job_name}' (ligne {row_num}): aucune tâche valide trouvée")
+        
+        # Si il y a des erreurs, les signaler
+        if errors:
+            error_msg = "Erreurs dans le fichier Excel Jobshop:\n" + "\n".join(f"• {err}" for err in errors[:10])
+            if len(errors) > 10:
+                error_msg += f"\n... et {len(errors) - 10} autres erreurs"
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        if not job_names:
+            raise HTTPException(
+                status_code=400,
+                detail="Aucun job valide trouvé. Vérifiez que vous avez rempli les noms de jobs et au moins une tâche par job au format (séquence, temps)."
+            )
+        
+        # Lire les noms des machines depuis les en-têtes (ligne 5, colonnes D-M)
+        machine_names = []
+        for j in range(3, 13):  # colonnes D à M (index 3-12)
+            try:
+                header = df.iloc[4, j]  # ligne 5 (index 4)
+                if pd.notna(header) and str(header).strip():
+                    machine_names.append(str(header).strip())
+                else:
+                    machine_names.append(f"Machine {j-3}")
+            except:
+                machine_names.append(f"Machine {j-3}")
+        
+        # Déterminer le nombre de machines réellement utilisées
+        max_machine_id = 0
+        for job in jobs_data:
+            for task in job:
+                max_machine_id = max(max_machine_id, task[0])
+        
+        # Ajuster les noms de machines
+        machine_names = machine_names[:max_machine_id + 1]
+        
+        return {
+            "jobs_data": jobs_data,
+            "due_dates": due_dates,
+            "job_names": job_names,
+            "machine_names": machine_names,
+            "unite": unite
+        }
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel Jobshop: {str(e)}")
+
+def export_jobshop_data_to_excel(
+    jobs_data: List[List[Dict]],  # Format: [[{'sequence': int, 'machine': int, 'duration': float}]]
+    due_dates: List[float], 
+    job_names: List[str], 
+    machine_names: List[str],
+    unite: str = "heures"
+) -> bytes:
+    """
+    Exporte les données Jobshop vers un fichier Excel avec le format (séquence, temps)
+    
+    Args:
+        jobs_data: Données des jobs au format Jobshop avec séquence
+        due_dates: Dates d'échéance des jobs
+        job_names: Noms des jobs
+        machine_names: Noms des machines
+        unite: Unité de temps
+    
+    Returns:
+        bytes: Contenu du fichier Excel
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Données Jobshop"
+    
+    # Styles
+    header_font = Font(bold=True, size=12)
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    cell_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Titre principal
+    ws['C3'] = "Données d'ordonnancement Jobshop"
+    ws['C3'].font = Font(bold=True, size=14)
+    ws.merge_cells('C3:M3')
+    
+    # En-têtes des colonnes
+    ws['C5'] = "Job"
+    ws['C5'].font = header_font
+    ws['C5'].fill = header_fill
+    ws['C5'].alignment = cell_alignment
+    
+    # Noms des machines (colonnes D-M)
+    for i, machine_name in enumerate(machine_names[:10]):  # Maximum 10 machines
+        col_idx = 4 + i  # Colonne D, E, F, etc.
+        cell = ws.cell(row=5, column=col_idx, value=machine_name)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = cell_alignment
+    
+    # Colonne date due
+    due_date_col = min(14, 4 + len(machine_names))  # Colonne N ou après la dernière machine
+    ws.cell(row=5, column=due_date_col, value="Date due").font = header_font
+    ws.cell(row=5, column=due_date_col).fill = header_fill
+    ws.cell(row=5, column=due_date_col).alignment = cell_alignment
+    
+    # Remplir les données des jobs
+    for job_idx, (job_name, job_tasks, due_date) in enumerate(zip(job_names, jobs_data, due_dates)):
+        row = 6 + job_idx
+        
+        # Nom du job
+        ws.cell(row=row, column=3, value=job_name).alignment = cell_alignment
+        
+        # Organiser les tâches par machine
+        tasks_by_machine = {}
+        for task in job_tasks:
+            if isinstance(task, dict):
+                machine_id = task['machine']
+                sequence = task['sequence']
+                duration = task['duration']
+            else:
+                # Fallback pour le format [machine, duration]
+                machine_id = task[0]
+                duration = task[1]
+                sequence = 1  # Séquence par défaut
+            
+            if machine_id not in tasks_by_machine:
+                tasks_by_machine[machine_id] = []
+            tasks_by_machine[machine_id].append((sequence, duration))
+        
+        # Remplir les cellules des machines avec le format (séquence, temps)
+        for machine_id, tasks in tasks_by_machine.items():
+            if machine_id < len(machine_names):
+                col_idx = 4 + machine_id  # Colonne D, E, F, etc.
+                
+                # Si plusieurs tâches sur la même machine, prendre la première
+                if tasks:
+                    sequence, duration = tasks[0]
+                    cell_value = f"({sequence}, {duration})"
+                    ws.cell(row=row, column=col_idx, value=cell_value).alignment = cell_alignment
+        
+        # Date due
+        ws.cell(row=row, column=due_date_col, value=due_date).alignment = cell_alignment
+    
+    # Unité de temps
+    ws['C20'] = unite[0].lower()  # j, h, ou m
+    ws['C20'].font = Font(italic=True)
+    ws['A20'] = "Unité:"
+    ws['A20'].font = Font(italic=True)
+    
+    # Instructions
+    ws['C22'] = "Format des cellules de temps: (séquence, durée)"
+    ws['C22'].font = Font(italic=True, size=10)
+    ws['C23'] = "Exemple: (1, 35) = 1ère tâche, durée 35"
+    ws['C23'].font = Font(italic=True, size=10)
+    
+    # Ajuster la largeur des colonnes
+    for col in range(3, 15):
+        ws.column_dimensions[chr(64 + col)].width = 12
+    
+    # Sauvegarder
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
+
 def export_manual_data_to_excel(
     jobs_data: List[List[float]], 
     due_dates: List[float], 

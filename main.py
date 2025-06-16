@@ -498,6 +498,319 @@ def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# ----------- Jobshop Import/Export -----------
+
+@app.post("/jobshop/spt/import-excel")
+async def import_jobshop_spt_excel(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_jobshop_excel(file_content)
+        
+        # Appeler l'algorithme SPT directement avec les données parsées
+        result = jobshop_spt.planifier_jobshop_spt(
+            parsed_data["job_names"], 
+            parsed_data["machine_names"], 
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"]
+        )
+        
+        # Ajouter les données parsées au résultat pour l'affichage frontend
+        result.update({
+            "imported_data": parsed_data
+        })
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/spt/import-excel-gantt")
+async def import_jobshop_spt_excel_gantt(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_jobshop_excel(file_content)
+        
+        # Appeler l'algorithme SPT pour obtenir les résultats
+        result = jobshop_spt.planifier_jobshop_spt(
+            parsed_data["job_names"], 
+            parsed_data["machine_names"], 
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"]
+        )
+        
+        # Créer le diagramme de Gantt
+        machines_dict = {}
+        for t in result["schedule"]:
+            m_idx = parsed_data["machine_names"].index(t["machine"])
+            machines_dict.setdefault(m_idx, []).append({
+                "job": t["job"],
+                "start": t["start"],
+                "duration": t["end"] - t["start"]
+            })
+        
+        result_formatted = {"machines": machines_dict}
+        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop SPT (Import Excel)",
+                                  unite=parsed_data["unite"],
+                                  job_names=parsed_data["job_names"],
+                                  machine_names=parsed_data["machine_names"],
+                                  due_dates=parsed_data["due_dates"])
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/edd/import-excel")
+async def import_jobshop_edd_excel(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_jobshop_excel(file_content)
+        
+        # Appeler l'algorithme EDD directement avec les données parsées
+        result = jobshop_edd.planifier_jobshop_edd(
+            parsed_data["job_names"], 
+            parsed_data["machine_names"], 
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"]
+        )
+        
+        # Ajouter les données parsées au résultat pour l'affichage frontend
+        result.update({
+            "imported_data": parsed_data
+        })
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/edd/import-excel-gantt")
+async def import_jobshop_edd_excel_gantt(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_jobshop_excel(file_content)
+        
+        # Appeler l'algorithme EDD pour obtenir les résultats
+        result = jobshop_edd.planifier_jobshop_edd(
+            parsed_data["job_names"], 
+            parsed_data["machine_names"], 
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"]
+        )
+        
+        # Créer le diagramme de Gantt
+        machines_dict = {}
+        for t in result["schedule"]:
+            m_idx = parsed_data["machine_names"].index(t["machine"])
+            machines_dict.setdefault(m_idx, []).append({
+                "job": t["job"],
+                "start": t["start"],
+                "duration": t["end"] - t["start"]
+            })
+        
+        result_formatted = {"machines": machines_dict}
+        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop EDD (Import Excel)",
+                                  unite=parsed_data["unite"],
+                                  job_names=parsed_data["job_names"],
+                                  machine_names=parsed_data["machine_names"],
+                                  due_dates=parsed_data["due_dates"])
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/contraintes/import-excel")
+async def import_jobshop_contraintes_excel(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_jobshop_excel(file_content)
+        
+        # Appeler l'algorithme Contraintes directement avec les données parsées
+        result = jobshop_contraintes.planifier_jobshop_contraintes(
+            parsed_data["job_names"], 
+            parsed_data["machine_names"], 
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"],
+            setup_times=None,  # Valeurs par défaut
+            release_times=None
+        )
+        
+        # Ajouter les données parsées au résultat pour l'affichage frontend
+        result.update({
+            "imported_data": parsed_data
+        })
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/contraintes/import-excel-gantt")
+async def import_jobshop_contraintes_excel_gantt(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_jobshop_excel(file_content)
+        
+        # Appeler l'algorithme Contraintes pour obtenir les résultats
+        result = jobshop_contraintes.planifier_jobshop_contraintes(
+            parsed_data["job_names"], 
+            parsed_data["machine_names"], 
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"],
+            setup_times=None,  # Valeurs par défaut
+            release_times=None
+        )
+        
+        # Créer le diagramme de Gantt avec support des temps de setup
+        machines_dict = {}
+        
+        # Ajouter les tâches normales
+        for t in result["schedule"]:
+            m_idx = parsed_data["machine_names"].index(t["machine"])
+            machines_dict.setdefault(m_idx, []).append({
+                "job": t["job"],
+                "start": t["start"],
+                "duration": t["duration"],
+                "type": "task"
+            })
+        
+        # Ajouter les temps de setup s'ils existent
+        if "setup_schedule" in result and result["setup_schedule"]:
+            for setup in result["setup_schedule"]:
+                m_idx = parsed_data["machine_names"].index(setup["machine"])
+                machines_dict.setdefault(m_idx, []).append({
+                    "job": f"{setup['from_job']}→{setup['to_job']}",
+                    "start": setup["start"],
+                    "duration": setup["duration"],
+                    "type": "setup"
+                })
+        
+        # Trier les tâches par temps de début pour chaque machine
+        for m_idx in machines_dict:
+            machines_dict[m_idx].sort(key=lambda x: x["start"])
+        
+        result_formatted = {"machines": machines_dict}
+        
+        # Utiliser la fonction Gantt avec support des temps de setup
+        fig = create_gantt_figure_with_setup(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (Import Excel)",
+                                           unite=parsed_data["unite"],
+                                           job_names=parsed_data["job_names"],
+                                           machine_names=parsed_data["machine_names"],
+                                           due_dates=parsed_data["due_dates"])
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# Modèle pour l'export Jobshop
+class JobshopExportDataRequest(BaseModel):
+    jobs_data: List[List[List[float]]]  # Format Jobshop: [machine, duration] par job
+    due_dates: List[float]
+    job_names: List[str]
+    machine_names: List[str]
+    unite: str = "heures"
+
+@app.post("/jobshop/spt/export-excel")
+def export_jobshop_spt_data_to_excel(request: JobshopExportDataRequest):
+    try:
+        # Convertir les données au format avec séquence pour l'export
+        formatted_jobs_data = []
+        for job_tasks in request.jobs_data:
+            job_formatted = []
+            for sequence, (machine, duration) in enumerate(job_tasks, 1):
+                job_formatted.append({
+                    'sequence': sequence,
+                    'machine': int(machine),
+                    'duration': float(duration)
+                })
+            formatted_jobs_data.append(job_formatted)
+        
+        excel_content = excel_import.export_jobshop_data_to_excel(
+            formatted_jobs_data,
+            request.due_dates,
+            request.job_names,
+            request.machine_names,
+            request.unite
+        )
+        
+        return StreamingResponse(
+            io.BytesIO(excel_content),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=jobshop_spt_export.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/edd/export-excel")
+def export_jobshop_edd_data_to_excel(request: JobshopExportDataRequest):
+    try:
+        # Convertir les données au format avec séquence pour l'export
+        formatted_jobs_data = []
+        for job_tasks in request.jobs_data:
+            job_formatted = []
+            for sequence, (machine, duration) in enumerate(job_tasks, 1):
+                job_formatted.append({
+                    'sequence': sequence,
+                    'machine': int(machine),
+                    'duration': float(duration)
+                })
+            formatted_jobs_data.append(job_formatted)
+        
+        excel_content = excel_import.export_jobshop_data_to_excel(
+            formatted_jobs_data,
+            request.due_dates,
+            request.job_names,
+            request.machine_names,
+            request.unite
+        )
+        
+        return StreamingResponse(
+            io.BytesIO(excel_content),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=jobshop_edd_export.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/jobshop/contraintes/export-excel")
+def export_jobshop_contraintes_data_to_excel(request: JobshopExportDataRequest):
+    try:
+        # Convertir les données au format avec séquence pour l'export
+        formatted_jobs_data = []
+        for job_tasks in request.jobs_data:
+            job_formatted = []
+            for sequence, (machine, duration) in enumerate(job_tasks, 1):
+                job_formatted.append({
+                    'sequence': sequence,
+                    'machine': int(machine),
+                    'duration': float(duration)
+                })
+            formatted_jobs_data.append(job_formatted)
+        
+        excel_content = excel_import.export_jobshop_data_to_excel(
+            formatted_jobs_data,
+            request.due_dates,
+            request.job_names,
+            request.machine_names,
+            request.unite
+        )
+        
+        return StreamingResponse(
+            io.BytesIO(excel_content),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=jobshop_contraintes_export.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # ----------- Algorithme SPT -----------
 
 @app.post("/spt")
