@@ -390,56 +390,109 @@ def create_flowshop_template(template_type: str = "exemple") -> bytes:
             'Machine_2': ['[À remplir]', '[À remplir]', '[À remplir]']
         }
     
-    # Instructions
-    instructions_data = {
-        'Section': [
-            'INSTRUCTIONS GÉNÉRALES',
-            '',
-            '1. Structure du fichier',
-            '',
-            '2. Onglet Machines',
-            '',
-            '3. Onglet Jobs',
-            '',
-            '4. Règles importantes',
-            '',
-            '5. Exemple de données',
-            ''
-        ],
-        'Description': [
-            'Template pour import de données Flowshop (SPT, EDD, etc.)',
-            '',
-            '- Onglet "Machines": Définit les machines et leurs noms',
-            '- Onglet "Jobs": Définit les jobs avec leurs durées sur chaque machine',
-            '',
-            '- ID_Machine: Numéro de la machine (0, 1, 2, ...)',
-            '- Nom_Machine: Nom personnalisé de votre machine',
-            '',
-            '- Nom_Job: Nom de votre job/produit',
-            '- Date_Echeance: Date limite en heures',
-            '- Machine_X: Durée du job sur la machine X',
-            '',
-            '- Les ID machines doivent commencer à 0 et être consécutifs',
-            '- Toutes les durées doivent être positives',
-            '- Aucune cellule ne doit être vide dans les colonnes obligatoires',
-            '',
-            'Job_A: 4h sur Découpe, 2h sur Assemblage, 3h sur Finition',
-            'Date d\'échéance: 12 heures'
-        ]
-    }
-    
     # Créer les DataFrames
     machines_df = pd.DataFrame(machines_data)
     jobs_df = pd.DataFrame(jobs_data)
-    instructions_df = pd.DataFrame(instructions_data)
     
-    # Écrire dans le fichier Excel avec pandas
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        machines_df.to_excel(writer, sheet_name='Machines', index=False)
-        jobs_df.to_excel(writer, sheet_name='Jobs', index=False)
-        instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
+    # Créer un workbook avec openpyxl pour un contrôle précis de la structure
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Données"
     
+    # Style pour les en-têtes
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+    
+    # STRUCTURE FIXE 12x12 - TOUJOURS utiliser ces positions exactes
+    
+    # C5: "JOB" (coin supérieur gauche)
+    ws['C5'] = "JOB"
+    ws['C5'].font = header_font
+    ws['C5'].fill = header_fill
+    ws['C5'].alignment = Alignment(horizontal="center")
+    
+    # C6-C16: Noms des jobs (colonne C = 3, lignes 6 à 16 = max 11 jobs)
+    for i in range(11):  # TOUJOURS 11 lignes (C6 à C16)
+        if i < len(job_names):
+            job_name = job_names[i]
+        else:
+            job_name = ""  # Cellule vide si pas assez de jobs
+        
+        cell = ws.cell(row=6+i, column=3, value=job_name)  # Colonne C = 3
+    
+    # D5-M5: Noms des machines (ligne 5, colonnes D=4 à M=13 = max 10 machines)
+    for i in range(10):  # TOUJOURS 10 colonnes (D à M)
+        if i < len(machine_names):
+            machine_name = machine_names[i]
+        else:
+            machine_name = ""  # Cellule vide si pas assez de machines
+            
+        cell = ws.cell(row=5, column=4+i, value=machine_name)  # Colonnes D=4 à M=13
+    
+    # N5: "Due Date" (TOUJOURS colonne N = 14)
+    ws.cell(row=5, column=14, value="Due Date")  # Colonne N = 14
+    
+    # N6-N16: Dates d'échéance (colonne N=14, lignes 6 à 16)
+    for i in range(11):  # TOUJOURS 11 lignes (N6 à N16)
+        if i < len(due_dates):
+            due_date = due_dates[i]
+        else:
+            due_date = ""  # Cellule vide si pas assez de dates
+            
+        cell = ws.cell(row=6+i, column=14, value=due_date)  # Colonne N = 14
+    
+    # D6-M16: Matrice des temps de traitement (colonnes D=4 à M=13, lignes 6 à 16)
+    for job_idx in range(11):  # TOUJOURS 11 lignes de jobs
+        for machine_idx in range(10):  # TOUJOURS 10 colonnes de machines
+            if job_idx < len(jobs_data) and machine_idx < len(jobs_data[job_idx]):
+                duration = jobs_data[job_idx][machine_idx][1]
+            else:
+                duration = ""  # Cellule vide si pas de données
+                
+            cell = ws.cell(row=6+job_idx, column=4+machine_idx, value=duration)
+    
+    # Ajuster la largeur des colonnes (C à N)
+    for col in range(3, 15):  # De C=3 à N=14
+        column_letter = ws.cell(row=1, column=col).column_letter
+        ws.column_dimensions[column_letter].width = 12
+    
+    # Instructions dans une nouvelle feuille
+    instructions_ws = wb.create_sheet("Instructions")
+    instructions_ws.append(["Ce template utilise TOUJOURS une structure fixe de 12x12:"])
+    instructions_ws.append(["- C5: 'JOB' (coin supérieur gauche)"])
+    instructions_ws.append(["- C6-C16: Noms des jobs (11 lignes maximum)"])
+    instructions_ws.append(["- D5-M5: Noms des machines (10 colonnes maximum)"])
+    instructions_ws.append(["- N5: 'Due Date' (TOUJOURS en colonne N)"])
+    instructions_ws.append(["- N6-N16: Dates d'échéance"])
+    instructions_ws.append(["- D6-M16: Matrice des temps de traitement"])
+    instructions_ws.append(["- C19: 'Unité de temps'"])
+    instructions_ws.append(["- C20: Unité (j/h/m selon l'interface)"])
+    instructions_ws.append([""])
+    instructions_ws.append(["Les cellules vides sont autorisées si moins de 10 machines ou 11 jobs."])
+    
+    # C19: "Unité de temps"
+    ws.cell(row=19, column=3, value="Unité de temps")
+    
+    # C20: Unité de temps (j/h/m selon l'interface)
+    unit_mapping = {
+        "jours": "j",
+        "heures": "h", 
+        "minutes": "m",
+        "jour": "j",
+        "heure": "h",
+        "minute": "m"
+    }
+    
+    # Conversion de l'unité reçue en abréviation
+    unit_abbrev = unit_mapping.get(unite.lower(), unite.lower())
+    ws.cell(row=20, column=3, value=unit_abbrev)
+    
+    print(f"DEBUG - Unité de temps ajoutée: '{unite}' -> '{unit_abbrev}' en C20")
+
+    # Sauvegarder le fichier
+    wb.save(output)
     output.seek(0)
+    
     return output.getvalue()
 
 def export_manual_data_to_excel(
@@ -629,6 +682,25 @@ def export_manual_data_to_excel(
     for i, instruction in enumerate(instructions):
         instructions_ws.cell(row=2+i, column=1, value=instruction)
     
+    # C19: "Unité de temps"
+    ws.cell(row=19, column=3, value="Unité de temps")
+    
+    # C20: Unité de temps (j/h/m selon l'interface)
+    unit_mapping = {
+        "jours": "j",
+        "heures": "h", 
+        "minutes": "m",
+        "jour": "j",
+        "heure": "h",
+        "minute": "m"
+    }
+    
+    # Conversion de l'unité reçue en abréviation
+    unit_abbrev = unit_mapping.get(unite.lower(), unite.lower())
+    ws.cell(row=20, column=3, value=unit_abbrev)
+    
+    print(f"DEBUG - Unité de temps ajoutée: '{unite}' -> '{unit_abbrev}' en C20")
+
     # Sauvegarder dans le BytesIO
     wb.save(output)
     output.seek(0)
