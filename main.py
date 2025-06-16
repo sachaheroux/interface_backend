@@ -253,16 +253,23 @@ def create_gantt_figure(result, title: str, unite="heures", job_names=None, mach
     
     return fig
 
-def create_gantt_figure_with_setup(result, title: str, unite="heures", job_names=None, machine_names=None):
+def create_gantt_figure_with_setup(result, title: str, unite="heures", job_names=None, machine_names=None, due_dates=None):
     """
     Fonction de Gantt spécialisée pour afficher les temps de setup en rouge pâle
+    AVEC le même visuel que create_gantt_figure (due dates en haut, cadrillage rond)
     """
-    fig, ax = plt.subplots(figsize=(12, 4))
+    fig, ax = plt.subplots(figsize=(12, 6))
     colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316"]
     setup_color = "#ffcccb"  # Rouge pâle pour les temps de setup
 
     # Trier les machines par index pour un affichage cohérent
     sorted_machines = sorted(result["machines"].items(), key=lambda x: int(x[0]))
+    
+    # Calculer le temps maximum pour les axes
+    max_time = 0
+    for m_idx, (m, tasks) in enumerate(sorted_machines):
+        for t in tasks:
+            max_time = max(max_time, t["start"] + t["duration"])
     
     for m_idx, (m, tasks) in enumerate(sorted_machines):
         label = machine_names[int(m)] if machine_names and int(m) < len(machine_names) else f"Machine {int(m)}"
@@ -286,6 +293,60 @@ def create_gantt_figure_with_setup(result, title: str, unite="heures", job_names
                     ax.barh(label, t["duration"], left=t["start"], color=color)
                     ax.text(t["start"] + t["duration"] / 2, label, job_label,
                             va="center", ha="center", color="white", fontsize=8)
+
+    # Ajouter le cadrillage avec des valeurs rondes (comme create_gantt_figure)
+    if max_time > 0:
+        time_step = get_nice_time_intervals(max_time)
+        time_ticks = list(range(0, int(max_time) + time_step, time_step))
+        ax.set_xticks(time_ticks)
+        ax.grid(True, axis='x', alpha=1.0, color='#6c757d', linewidth=0.8)
+
+    # Créer un mapping des dates dues vers les couleurs des tâches
+    due_date_colors = {}
+    if due_dates:
+        for job_idx, due_date in enumerate(due_dates):
+            if due_date and due_date > 0:
+                job_color = colors[job_idx % len(colors)]
+                due_date_colors[due_date] = (job_color, job_idx)
+
+    # Afficher les dates dues empilées AU-DESSUS de la première machine (comme create_gantt_figure)
+    if due_date_colors:
+        # Obtenir les limites actuelles de l'axe y
+        y_min, y_max = ax.get_ylim()
+        
+        # Grouper les dates dues par position
+        due_dates_at_position = {}
+        for due_date, (color, job_idx) in due_date_colors.items():
+            job_name = job_names[job_idx] if job_names and job_idx < len(job_names) else f'J{job_idx+1}'
+            if due_date not in due_dates_at_position:
+                due_dates_at_position[due_date] = []
+            due_dates_at_position[due_date].append((color, job_name))
+        
+        # Afficher les dates dues empilées AU-DESSUS de la première machine
+        max_stack_height = 0
+        for due_date, job_info_list in due_dates_at_position.items():
+            # Ajouter une ligne verticale pour marquer la date due
+            main_color = job_info_list[0][0]  # Couleur du premier job
+            ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
+            
+            # Empiler les dates dues verticalement AU-DESSUS de la première machine
+            # Comme l'axe Y est inversé, y_min correspond au haut du graphique
+            for i, (color, job_name) in enumerate(job_info_list):
+                # Position au-dessus de la première machine (utiliser y_min car l'axe est inversé)
+                y_position = y_min - 0.3 - (i * 0.5)
+                
+                # Créer une boîte colorée avec le nom du job et la date due
+                bbox_props = dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.8, edgecolor='black')
+                ax.text(due_date, y_position, f'{job_name}: {due_date}', 
+                       ha='center', va='center', fontsize=9, color='white', weight='bold',
+                       bbox=bbox_props, zorder=10)
+                
+                max_stack_height = max(max_stack_height, 0.3 + (i + 1) * 0.5)
+        
+        # Ajuster les limites de l'axe Y pour faire de la place aux due dates
+        if max_stack_height > 0:
+            extension = max_stack_height + 0.2
+            ax.set_ylim(y_min - extension, y_max)
 
     ax.set_xlabel(f"Temps ({unite})")
     ax.invert_yaxis()
@@ -426,9 +487,10 @@ def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
         fig = create_gantt_figure_with_setup(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (CP)",
                                            unite=request.unite,
                                            job_names=request.job_names,
-                                           machine_names=request.machine_names)
+                                           machine_names=request.machine_names,
+                                           due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -750,7 +812,7 @@ def run_flowshop_machines_multiples(request: FlexibleFlowshopRequest):
 @app.post("/flowshop/machines_multiples/gantt")
 def run_flowshop_machines_multiples_gantt(request: FlexibleFlowshopRequest):
     try:
-        # Utiliser la fonction de création de Gantt intégrée
+        # Utiliser la fonction de création de Gantt intégrée avec le visuel standardisé
         fig = flowshop_machines.create_gantt_chart(
             request.jobs_data, 
             request.due_dates,

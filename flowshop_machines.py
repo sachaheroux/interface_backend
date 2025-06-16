@@ -2,6 +2,7 @@ import collections
 from ortools.sat.python import cp_model
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import numpy as np
 
 def debug_jobs_data(jobs_data, due_dates):
     """Debug function to trace data structure"""
@@ -222,6 +223,7 @@ def solve_flexible_flowshop(jobs_data, due_dates, machine_names=None, stage_name
 def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=None, machines_per_stage=None, machine_priorities=None):
     """
     Crée un diagramme de Gantt pour la solution du flowshop flexible
+    AVEC le même visuel standardisé que les autres algorithmes
     """
     # Résoudre d'abord le problème
     result = solve_flexible_flowshop(jobs_data, due_dates, machine_names, stage_names, machines_per_stage, machine_priorities)
@@ -254,28 +256,50 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
 
     machine_display_names = sorted(display_name_to_id.keys(), key=lambda x: (int(''.join(filter(str.isdigit, x))), x))
     
-    # Créer le diagramme de Gantt
-    fig, ax = plt.subplots(figsize=(12, 8))
+    # Calculer la taille optimale selon le nombre de machines
+    num_machines = len(machine_display_names)
+    fig_height = max(4, num_machines * 0.8 + 2)
+    fig, ax = plt.subplots(figsize=(14, fig_height))
+    
+    # Style professionnel (comme create_gantt_figure)
+    ax.set_facecolor('#f8f9fa')
+    fig.patch.set_facecolor('white')
+    
+    # Couleurs différentes pour chaque tâche (comme create_gantt_figure)
+    colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316", 
+              "#06b6d4", "#84cc16", "#f43f5e", "#8b5a2b", "#6b7280", "#ec4899", "#3b82f6", "#22c55e"]
 
     ax.set_yticks(range(len(machine_display_names)))
     ax.set_yticklabels(machine_display_names)
     ax.invert_yaxis()
 
-    cmap = plt.get_cmap("tab10")
-    colors = [cmap(i) for i in range(len(jobs_data))]
+    # Hauteur des barres
+    bar_height = 0.6
 
-    # Dessiner les tâches
+    # Dessiner les tâches avec le nouveau style
     for y, label in enumerate(machine_display_names):
         machine_id = display_name_to_id[label]
         if machine_id in result["machines"]:
             for task in result["machines"][machine_id]:
-                ax.barh(y, task["duration"], left=task["start"], height=0.8, 
-                       color=colors[task["job"] - 1], alpha=0.8, edgecolor='black', linewidth=0.5)
+                job_idx = task["job"] - 1  # Ajuster l'index (jobs commencent à 1)
+                color = colors[job_idx % len(colors)]
+                
+                # Créer la barre avec bordure (style professionnel)
+                bar = ax.barh(y, task["duration"], left=task["start"], height=bar_height, 
+                             color=color, alpha=0.9, edgecolor='white', linewidth=1.5)
+                
+                # Ajouter une ombre subtile
+                shadow = ax.barh(y, task["duration"], left=task["start"] + 0.1, color='black', 
+                               height=bar_height, alpha=0.1, zorder=0)
+                
+                # Texte du job avec style amélioré
+                text_color = 'white'
                 ax.text(task["start"] + task["duration"] / 2, y, 
                        f"Job {task['job']}\nTask {task['task']}",
-                       ha='center', va='center', fontsize=8, fontweight='bold')
+                       ha='center', va='center', color=text_color, fontsize=9, 
+                       fontweight='bold', zorder=10)
 
-    # Grouper les machines alternatives avec des rectangles
+    # Grouper les machines alternatives avec des rectangles NOIRS (préserver cette fonctionnalité)
     base_to_group = collections.defaultdict(list)
     for label in machine_display_names:
         base = label[:-1] if label[-1].isalpha() else label
@@ -289,16 +313,112 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
             ax.add_patch(
                 patches.Rectangle(
                     (0, y_min), result["makespan"], height,
-                    linewidth=1, edgecolor='black', facecolor='none'
+                    linewidth=2, edgecolor='black', facecolor='none', zorder=15
                 )
             )
 
+    # Ajouter le cadrillage avec des valeurs rondes (comme create_gantt_figure)
+    max_time = result["makespan"]
+    if max_time > 0:
+        # Fonction pour obtenir des intervalles de temps ronds
+        def get_nice_time_intervals(max_time):
+            nice_intervals = [1, 2, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+            for interval in nice_intervals:
+                if max_time / interval <= 20:  # Pas plus de 20 divisions
+                    return interval
+            return max(1, int(max_time / 20))
+        
+        time_step = get_nice_time_intervals(max_time)
+        time_ticks = np.arange(0, int(max_time) + time_step + 1, time_step)
+        
+        # Grille verticale et horizontale très foncée (comme create_gantt_figure)
+        ax.set_xticks(time_ticks)
+        ax.grid(True, axis='x', alpha=1.0, linestyle='-', linewidth=1.2, color='#6c757d')
+        ax.grid(True, axis='y', alpha=0.8, linestyle='-', linewidth=1.0, color='#6c757d')
+        ax.set_axisbelow(True)
+        
+        # Créer un mapping des dates dues vers les couleurs des tâches
+        due_date_colors = {}
+        if due_dates:
+            for job_idx, due_date in enumerate(due_dates):
+                if due_date and due_date > 0:
+                    job_color = colors[job_idx % len(colors)]
+                    due_date_colors[due_date] = (job_color, job_idx)
+        
+        # Afficher les dates dues empilées AU-DESSUS de la première machine (comme create_gantt_figure)
+        if due_date_colors:
+            # Créer des étiquettes normales pour l'axe x
+            x_labels = [str(int(tick)) for tick in time_ticks]
+            ax.set_xticklabels(x_labels)
+            
+            # Obtenir les limites actuelles de l'axe y
+            y_min, y_max = ax.get_ylim()
+            
+            # Grouper les dates dues par position pour les empiler
+            due_dates_at_position = {}
+            
+            for due_date, (color, job_idx) in due_date_colors.items():
+                if due_date <= max_time:
+                    if due_date not in due_dates_at_position:
+                        due_dates_at_position[due_date] = []
+                    
+                    # Nom du job (Job 1, Job 2, etc.)
+                    job_name = f'Job {job_idx+1}'
+                    due_dates_at_position[due_date].append((color, job_name))
+            
+            # Afficher les dates dues empilées AU-DESSUS de la première machine
+            max_stack_height = 0
+            for due_date, job_info_list in due_dates_at_position.items():
+                # Ajouter une ligne verticale pour marquer la date due
+                main_color = job_info_list[0][0]  # Couleur du premier job
+                ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
+                
+                # Empiler les dates dues verticalement AU-DESSUS de la première machine
+                # Comme l'axe Y est inversé, y_min correspond au haut du graphique
+                for i, (color, job_name) in enumerate(job_info_list):
+                    # Position au-dessus de la première machine (utiliser y_min car l'axe est inversé)
+                    y_position = y_min - 0.3 - (i * 0.5)
+                    
+                    # Créer une boîte colorée avec le nom du job et la date due
+                    bbox_props = dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.8, edgecolor='black')
+                    ax.text(due_date, y_position, f'{job_name}: {due_date}', 
+                           ha='center', va='center', fontsize=9, color='white', weight='bold',
+                           bbox=bbox_props, zorder=10)
+                    
+                    max_stack_height = max(max_stack_height, 0.3 + (i + 1) * 0.5)
+            
+            # Ajuster les limites de l'axe Y pour faire de la place aux due dates
+            if max_stack_height > 0:
+                extension = max_stack_height + 0.2
+                ax.set_ylim(y_min - extension, y_max)
+
+    # Améliorer les axes (comme create_gantt_figure)
     ax.set_xlim(0, result["makespan"])
-    ax.set_xlabel("Temps", fontsize=12)
-    ax.set_ylabel("Machines", fontsize=12)
-    ax.set_title("Flowshop Flexible - Machines Multiples", fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3)
+    ax.set_xlabel("Temps", fontsize=12, fontweight='bold')
+    ax.set_ylabel("Machines", fontsize=12, fontweight='bold')
+    
+    # Titre avec style
+    ax.set_title("Flowshop Flexible - Machines Multiples", fontsize=14, fontweight='bold', pad=20)
+    
+    # Créer la légende pour les tâches (si pas trop de jobs)
+    if len(jobs_data) <= 8:  # Limiter la légende si trop de jobs
+        legend_elements = []
+        for i in range(len(jobs_data)):
+            # Utiliser la même logique de couleur que pour les barres
+            color = colors[i % len(colors)]
+            legend_elements.append(patches.Patch(color=color, label=f'Job {i+1}'))
+        
+        # Positionner la légende en haut à droite
+        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1), 
+                 frameon=True, fancybox=True, shadow=True, fontsize=9)
+    
+    # Ajuster les marges
     plt.tight_layout()
+    
+    # Ajouter une bordure autour du graphique
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#dee2e6')
+        spine.set_linewidth(1)
     
     return fig
 
