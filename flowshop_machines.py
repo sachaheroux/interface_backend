@@ -271,7 +271,7 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
 
     ax.set_yticks(range(len(machine_display_names)))
     ax.set_yticklabels(machine_display_names)
-    ax.invert_yaxis()
+    # Ne pas inverser l'axe Y pour avoir le même ordre que les autres algorithmes
 
     # Hauteur des barres
     bar_height = 0.6
@@ -374,10 +374,10 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
                 ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
                 
                 # Empiler les dates dues verticalement AU-DESSUS de la première machine
-                # Comme l'axe Y est inversé, nous devons utiliser des valeurs négatives pour aller "au-dessus"
+                # Maintenant que l'axe Y n'est plus inversé, utiliser des valeurs au-dessus du maximum
                 for i, (color, job_name) in enumerate(job_info_list):
-                    # Position au-dessus de la première machine (valeurs négatives car axe inversé)
-                    y_position = -0.8 - (i * 0.5)
+                    # Position au-dessus de la dernière machine (valeurs positives au-dessus du max)
+                    y_position = len(machine_display_names) + 0.3 + (i * 0.5)
                     
                     # Créer une boîte colorée avec le nom du job et la date due
                     bbox_props = dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.8, edgecolor='black')
@@ -385,13 +385,13 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
                            ha='center', va='center', fontsize=9, color='white', weight='bold',
                            bbox=bbox_props, zorder=10)
                     
-                    max_stack_height = max(max_stack_height, 0.8 + (i + 1) * 0.5)
+                    max_stack_height = max(max_stack_height, 0.3 + (i + 1) * 0.5)
             
             # Ajuster les limites de l'axe Y pour faire de la place aux due dates
             if max_stack_height > 0:
                 extension = max_stack_height + 0.2
-                # Étendre vers le haut (valeurs négatives car axe inversé)
-                ax.set_ylim(-extension, len(machine_display_names) - 0.5)
+                # Étendre vers le haut (valeurs positives au-dessus du max)
+                ax.set_ylim(-0.5, len(machine_display_names) + extension)
 
     # Améliorer les axes (comme create_gantt_figure)
     ax.set_xlim(0, result["makespan"])
