@@ -462,6 +462,18 @@ def export_manual_data_to_excel(
     Returns:
         bytes: Contenu du fichier Excel
     """
+    # Validation des données d'entrée
+    if not jobs_data or not due_dates or not job_names or not machine_names:
+        raise ValueError("Toutes les données (jobs_data, due_dates, job_names, machine_names) sont requises")
+    
+    # Vérifier que toutes les listes ont la même longueur
+    num_jobs = len(job_names)
+    if len(jobs_data) != num_jobs:
+        raise ValueError(f"Le nombre de jobs dans jobs_data ({len(jobs_data)}) ne correspond pas au nombre de noms de jobs ({num_jobs})")
+    
+    if len(due_dates) != num_jobs:
+        raise ValueError(f"Le nombre de dates d'échéance ({len(due_dates)}) ne correspond pas au nombre de jobs ({num_jobs})")
+    
     # Créer un BytesIO pour le fichier Excel
     output = io.BytesIO()
     
@@ -479,7 +491,19 @@ def export_manual_data_to_excel(
     
     # Ajouter les colonnes pour chaque machine
     for i, machine_name in enumerate(machine_names):
-        jobs_dict[f'Machine_{i}'] = [job[i] if i < len(job) else 0 for job in jobs_data]
+        machine_column = []
+        for job_idx, job in enumerate(jobs_data):
+            try:
+                # Gérer différents formats de données
+                if isinstance(job, list) and len(job) > i:
+                    duration = float(job[i]) if job[i] is not None else 0.0
+                else:
+                    duration = 0.0
+                machine_column.append(duration)
+            except (ValueError, TypeError, IndexError) as e:
+                raise ValueError(f"Erreur dans les données du job '{job_names[job_idx]}' pour la machine '{machine_name}': {str(e)}")
+        
+        jobs_dict[f'Machine_{i}'] = machine_column
     
     # Instructions d'export
     instructions_data = {
