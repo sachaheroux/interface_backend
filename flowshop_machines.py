@@ -269,15 +269,16 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
     colors = ["#4f46e5", "#f59e0b", "#10b981", "#ef4444", "#6366f1", "#8b5cf6", "#14b8a6", "#f97316", 
               "#06b6d4", "#84cc16", "#f43f5e", "#8b5a2b", "#6b7280", "#ec4899", "#3b82f6", "#22c55e"]
 
+    # Inverser l'ordre des étiquettes pour que la plus petite machine soit en haut
+    reversed_machine_names = list(reversed(machine_display_names))
     ax.set_yticks(range(len(machine_display_names)))
-    ax.set_yticklabels(machine_display_names)
-    # Ne pas inverser l'axe Y pour que la plus petite machine soit en haut
+    ax.set_yticklabels(reversed_machine_names)
 
     # Hauteur des barres
     bar_height = 0.6
 
-    # Dessiner les tâches avec le nouveau style
-    for y, label in enumerate(machine_display_names):
+    # Dessiner les tâches avec le nouveau style (utiliser l'ordre inversé)
+    for y, label in enumerate(reversed_machine_names):
         machine_id = display_name_to_id[label]
         if machine_id in result["machines"]:
             for task in result["machines"][machine_id]:
@@ -307,7 +308,8 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
 
     for group_labels in base_to_group.values():
         if len(group_labels) > 1:
-            ys = [machine_display_names.index(lab) for lab in group_labels]
+            # Utiliser l'ordre inversé pour les positions Y
+            ys = [reversed_machine_names.index(lab) for lab in group_labels]
             y_min = min(ys) - 0.4
             height = len(ys) * 1.0 - 0.2
             ax.add_patch(
