@@ -584,11 +584,14 @@ def export_manual_data_to_excel(
         for machine_idx in range(10):  # TOUJOURS 10 colonnes de machines
             if job_idx < len(normalized_jobs_data) and machine_idx < len(normalized_jobs_data[job_idx]):
                 duration = normalized_jobs_data[job_idx][machine_idx]
+                print(f"DEBUG - Writing job {job_idx}, machine {machine_idx}: duration = {duration} (type: {type(duration)})")
             else:
                 duration = ""  # Cellule vide si pas de données
+                print(f"DEBUG - No data for job {job_idx}, machine {machine_idx}: setting empty")
                 
             cell = ws.cell(row=6+job_idx, column=4+machine_idx, value=duration)
             cell.border = border
+            print(f"DEBUG - Cell ({6+job_idx}, {4+machine_idx}) = {cell.value}")
     
     # Ajuster la largeur des colonnes (C à N)
     for col in range(3, 15):  # De C=3 à N=14
