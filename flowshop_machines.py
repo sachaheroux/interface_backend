@@ -271,7 +271,7 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
 
     ax.set_yticks(range(len(machine_display_names)))
     ax.set_yticklabels(machine_display_names)
-    # Ne pas inverser l'axe Y pour avoir le même ordre que les autres algorithmes
+    # Ne pas inverser l'axe Y pour que la plus petite machine soit en haut
 
     # Hauteur des barres
     bar_height = 0.6
@@ -374,7 +374,7 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
                 ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
                 
                 # Empiler les dates dues verticalement AU-DESSUS de la première machine
-                # Maintenant que l'axe Y n'est plus inversé, utiliser des valeurs au-dessus du maximum
+                # Avec l'axe Y normal, utiliser des valeurs positives au-dessus du maximum
                 for i, (color, job_name) in enumerate(job_info_list):
                     # Position au-dessus de la dernière machine (valeurs positives au-dessus du max)
                     y_position = len(machine_display_names) + 0.3 + (i * 0.5)
