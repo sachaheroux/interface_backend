@@ -1914,6 +1914,57 @@ async def import_contraintes_excel(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
 
+@app.post("/contraintes/import-excel-gantt")
+async def import_contraintes_excel_gantt(file: UploadFile = File(...)):
+    """Import de données Contraintes depuis un fichier Excel et génération du diagramme de Gantt"""
+    try:
+        # Vérifier le type de fichier
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
+        
+        # Lire et parser le fichier
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        
+        # Valider les données
+        validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
+        
+        # Exécuter l'algorithme Contraintes
+        result = contraintes.flowshop_contraintes(
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"],
+            parsed_data["job_names"], 
+            parsed_data["machine_names"],
+            None  # machines_per_stage
+        )
+        
+        # Générer le diagramme de Gantt
+        fig = create_gantt_figure(
+            result, 
+            "Diagramme de Gantt - Contraintes (Import Excel)",
+            unite=parsed_data["unite"],
+            job_names=parsed_data["job_names"],
+            machine_names=parsed_data["machine_names"],
+            due_dates=parsed_data["due_dates"]
+        )
+        
+        # Convertir en image
+        img_buffer = io.BytesIO()
+        fig.savefig(img_buffer, format='png', dpi=300, bbox_inches='tight')
+        img_buffer.seek(0)
+        plt.close(fig)
+        
+        return StreamingResponse(
+            img_buffer,
+            media_type="image/png",
+            headers={"Content-Disposition": f"attachment; filename=gantt_contraintes_import.png"}
+        )
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du diagramme: {str(e)}")
+
 # Modèle pour l'export des données manuelles
 class ExportDataRequest(BaseModel):
     jobs_data: List[List[float]]
