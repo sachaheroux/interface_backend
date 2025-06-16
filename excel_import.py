@@ -442,4 +442,122 @@ def create_flowshop_template(template_type: str = "exemple") -> bytes:
     output.seek(0)
     return output.getvalue()
 
+def export_manual_data_to_excel(
+    jobs_data: List[List[float]], 
+    due_dates: List[float], 
+    job_names: List[str], 
+    machine_names: List[str],
+    unite: str = "heures"
+) -> bytes:
+    """
+    Exporte les données saisies manuellement vers un fichier Excel
+    
+    Args:
+        jobs_data: Données des jobs [[durée_machine_0, durée_machine_1, ...], ...]
+        due_dates: Dates d'échéance des jobs
+        job_names: Noms des jobs
+        machine_names: Noms des machines
+        unite: Unité de temps
+        
+    Returns:
+        bytes: Contenu du fichier Excel
+    """
+    # Créer un BytesIO pour le fichier Excel
+    output = io.BytesIO()
+    
+    # Préparer les données des machines
+    machines_data = {
+        'ID_Machine': list(range(len(machine_names))),
+        'Nom_Machine': machine_names
+    }
+    
+    # Préparer les données des jobs
+    jobs_dict = {
+        'Nom_Job': job_names,
+        'Date_Echeance': due_dates
+    }
+    
+    # Ajouter les colonnes pour chaque machine
+    for i, machine_name in enumerate(machine_names):
+        jobs_dict[f'Machine_{i}'] = [job[i] if i < len(job) else 0 for job in jobs_data]
+    
+    # Instructions d'export
+    instructions_data = {
+        'Section': [
+            'DONNÉES EXPORTÉES',
+            '',
+            '1. Source des données',
+            '',
+            '2. Structure du fichier',
+            '',
+            '3. Utilisation',
+            '',
+            '4. Paramètres',
+            '',
+            '5. Remarques',
+            ''
+        ],
+        'Description': [
+            'Données exportées depuis la saisie manuelle de l\'interface',
+            '',
+            '- Ces données ont été saisies manuellement dans l\'application',
+            '- Elles sont maintenant disponibles au format Excel pour réutilisation',
+            '',
+            '- Onglet "Machines": Définition des machines utilisées',
+            '- Onglet "Jobs": Données des jobs avec durées et dates d\'échéance',
+            '',
+            '- Vous pouvez modifier ces données et les réimporter',
+            '- Respectez la structure pour un import réussi',
+            '',
+            f'- Unité de temps: {unite}',
+            f'- Nombre de machines: {len(machine_names)}',
+            f'- Nombre de jobs: {len(job_names)}',
+            '',
+            'Ce fichier peut être modifié et réimporté dans l\'application',
+            'Conservez la structure des onglets et des colonnes'
+        ]
+    }
+    
+    # Créer les DataFrames
+    machines_df = pd.DataFrame(machines_data)
+    jobs_df = pd.DataFrame(jobs_dict)
+    instructions_df = pd.DataFrame(instructions_data)
+    
+    # Écrire dans le fichier Excel avec pandas
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        machines_df.to_excel(writer, sheet_name='Machines', index=False)
+        jobs_df.to_excel(writer, sheet_name='Jobs', index=False)
+        instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
+        
+        # Améliorer la mise en forme
+        workbook = writer.book
+        
+        # Style pour les en-têtes
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+        
+        # Appliquer le style aux en-têtes de chaque onglet
+        for sheet_name in ['Machines', 'Jobs', 'Instructions']:
+            worksheet = workbook[sheet_name]
+            for cell in worksheet[1]:  # Première ligne (en-têtes)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Ajuster la largeur des colonnes
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    output.seek(0)
+    return output.getvalue()
+
  

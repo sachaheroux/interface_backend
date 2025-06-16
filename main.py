@@ -1913,3 +1913,149 @@ async def import_contraintes_excel(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et du traitement: {str(e)}")
 
+# Modèle pour l'export des données manuelles
+class ExportDataRequest(BaseModel):
+    jobs_data: List[List[float]]
+    due_dates: List[float]
+    job_names: List[str]
+    machine_names: List[str]
+    unite: str = "heures"
+
+@app.post("/spt/export-excel")
+def export_spt_data_to_excel(request: ExportDataRequest):
+    """Export des données SPT saisies manuellement vers Excel"""
+    try:
+        excel_content = excel_import.export_manual_data_to_excel(
+            jobs_data=request.jobs_data,
+            due_dates=request.due_dates,
+            job_names=request.job_names,
+            machine_names=request.machine_names,
+            unite=request.unite
+        )
+        
+        buf = io.BytesIO(excel_content)
+        filename = f"Export_SPT_Donnees_Manuelles.xlsx"
+        
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/edd/export-excel")
+def export_edd_data_to_excel(request: ExportDataRequest):
+    """Export des données EDD saisies manuellement vers Excel"""
+    try:
+        excel_content = excel_import.export_manual_data_to_excel(
+            jobs_data=request.jobs_data,
+            due_dates=request.due_dates,
+            job_names=request.job_names,
+            machine_names=request.machine_names,
+            unite=request.unite
+        )
+        
+        buf = io.BytesIO(excel_content)
+        filename = f"Export_EDD_Donnees_Manuelles.xlsx"
+        
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/johnson/export-excel")
+def export_johnson_data_to_excel(request: ExportDataRequest):
+    """Export des données Johnson saisies manuellement vers Excel"""
+    try:
+        excel_content = excel_import.export_manual_data_to_excel(
+            jobs_data=request.jobs_data,
+            due_dates=request.due_dates,
+            job_names=request.job_names,
+            machine_names=request.machine_names,
+            unite=request.unite
+        )
+        
+        buf = io.BytesIO(excel_content)
+        filename = f"Export_Johnson_Donnees_Manuelles.xlsx"
+        
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/johnson_modifie/export-excel")
+def export_johnson_modifie_data_to_excel(request: ExportDataRequest):
+    """Export des données Johnson Modifié saisies manuellement vers Excel"""
+    try:
+        excel_content = excel_import.export_manual_data_to_excel(
+            jobs_data=request.jobs_data,
+            due_dates=request.due_dates,
+            job_names=request.job_names,
+            machine_names=request.machine_names,
+            unite=request.unite
+        )
+        
+        buf = io.BytesIO(excel_content)
+        filename = f"Export_Johnson_Modifie_Donnees_Manuelles.xlsx"
+        
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/contraintes/export-excel")
+def export_contraintes_data_to_excel(request: ExportDataRequest):
+    """Export des données Contraintes saisies manuellement vers Excel"""
+    try:
+        excel_content = excel_import.export_manual_data_to_excel(
+            jobs_data=request.jobs_data,
+            due_dates=request.due_dates,
+            job_names=request.job_names,
+            machine_names=request.machine_names,
+            unite=request.unite
+        )
+        
+        buf = io.BytesIO(excel_content)
+        filename = f"Export_Contraintes_Donnees_Manuelles.xlsx"
+        
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/smith/export-excel")
+def export_smith_data_to_excel(request: ExportDataRequest):
+    """Export des données Smith saisies manuellement vers Excel"""
+    try:
+        excel_content = excel_import.export_manual_data_to_excel(
+            jobs_data=request.jobs_data,
+            due_dates=request.due_dates,
+            job_names=request.job_names,
+            machine_names=request.machine_names,
+            unite=request.unite
+        )
+        
+        buf = io.BytesIO(excel_content)
+        filename = f"Export_Smith_Donnees_Manuelles.xlsx"
+        
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
