@@ -514,9 +514,10 @@ def run_edd_gantt(request: ExtendedRequest):
         fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop EDD",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
