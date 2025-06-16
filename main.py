@@ -550,9 +550,10 @@ def run_johnson_gantt(request: JohnsonRequest):
         fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -585,9 +586,10 @@ def run_johnson_modifie_gantt(request: JohnsonModifieRequest):
         fig = create_gantt_figure(result, "Diagramme de Gantt - Johnson modifié",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -675,9 +677,10 @@ def run_contraintes_gantt(request: ExtendedRequest):
         fig = create_gantt_figure(result, "Diagramme de Gantt - Contraintes (CP)",
                                   unite=request.unite,
                                   job_names=request.job_names,
-                                  machine_names=request.machine_names)
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -1534,15 +1537,10 @@ async def import_edd_excel(file: UploadFile = File(...)):
 
 @app.post("/edd/import-excel-gantt")
 async def import_edd_excel_gantt(file: UploadFile = File(...)):
-    """Import de données EDD depuis un fichier Excel et génération du diagramme de Gantt"""
     try:
-        # Vérifier le type de fichier
-        if not file.filename.endswith(('.xlsx', '.xls')):
-            raise HTTPException(status_code=400, detail="Le fichier doit être au format Excel (.xlsx ou .xls)")
-        
-        # Lire et parser le fichier
-        file_content = await file.read()
-        parsed_data = excel_import.parse_flowshop_excel(file_content)
+        # Lire le fichier Excel
+        contents = await file.read()
+        parsed_data = excel_import.parse_flowshop_excel(contents)
         
         # Valider les données
         validate_jobs_data(parsed_data["jobs_data"], parsed_data["due_dates"], parsed_data["job_names"])
@@ -1550,26 +1548,19 @@ async def import_edd_excel_gantt(file: UploadFile = File(...)):
         # Exécuter l'algorithme EDD
         result = edd.schedule(parsed_data["jobs_data"], parsed_data["due_dates"])
         
-        # Générer le diagramme de Gantt
-        fig = create_gantt_figure(
-            result, 
-            "Diagramme de Gantt - EDD (Import Excel)",
-            unite=parsed_data["unite"],
-            job_names=parsed_data["job_names"],
-            machine_names=parsed_data["machine_names"]
-        )
-        
+        # Créer le graphique Gantt avec due_dates
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Flowshop EDD",
+                                  unite=parsed_data["unite"],
+                                  job_names=parsed_data["job_names"],
+                                  machine_names=parsed_data["machine_names"],
+                                  due_dates=parsed_data["due_dates"])
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
-        
         return StreamingResponse(buf, media_type="image/png")
-        
-    except HTTPException as e:
-        raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de l'import et de la génération du Gantt: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 # ----------- Import Excel pour Johnson -----------
 
