@@ -450,7 +450,13 @@ def export_manual_data_to_excel(
     unite: str = "heures"
 ) -> bytes:
     """
-    Exporte les données saisies manuellement vers un fichier Excel
+    Exporte les données saisies manuellement vers un fichier Excel au format matriciel
+    Structure exacte du template :
+    - C5: "JOB"
+    - C6-C16: Noms des jobs
+    - D5-M5: Noms des machines
+    - N6-N16: Dates d'échéance (colonne "Due Date")
+    - D6-M16: Matrice des temps de traitement
     
     Args:
         jobs_data: Données des jobs [[durée_machine_0, durée_machine_1, ...], ...]
@@ -474,23 +480,7 @@ def export_manual_data_to_excel(
     if len(due_dates) != num_jobs:
         raise ValueError(f"Le nombre de dates d'échéance ({len(due_dates)}) ne correspond pas au nombre de jobs ({num_jobs})")
     
-    # Créer un BytesIO pour le fichier Excel
-    output = io.BytesIO()
-    
-    # Préparer les données des machines
-    machines_data = {
-        'ID_Machine': list(range(len(machine_names))),
-        'Nom_Machine': machine_names
-    }
-    
-    # Préparer les données des jobs
-    jobs_dict = {
-        'Nom_Job': job_names,
-        'Date_Echeance': due_dates
-    }
-    
-    # Ajouter les colonnes pour chaque machine
-    # D'abord, s'assurer que tous les jobs ont le bon nombre de durées
+    # Normaliser les données des jobs pour s'assurer qu'elles ont toutes la bonne longueur
     normalized_jobs_data = []
     for job_idx, job in enumerate(jobs_data):
         try:
@@ -510,87 +500,99 @@ def export_manual_data_to_excel(
         except (ValueError, TypeError) as e:
             raise ValueError(f"Erreur dans les données du job '{job_names[job_idx]}': {str(e)}")
     
-    # Maintenant créer les colonnes pour chaque machine
+    # Créer un BytesIO pour le fichier Excel
+    output = io.BytesIO()
+    
+    # Créer un workbook avec openpyxl pour un contrôle précis de la structure
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Données"
+    
+    # Style pour les en-têtes
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # C5: "JOB" (coin supérieur gauche)
+    ws['C5'] = "JOB"
+    ws['C5'].font = header_font
+    ws['C5'].fill = header_fill
+    ws['C5'].alignment = Alignment(horizontal="center")
+    ws['C5'].border = border
+    
+    # C6-C16: Noms des jobs (colonne C, lignes 6 à 6+num_jobs-1)
+    for i, job_name in enumerate(job_names):
+        cell = ws.cell(row=6+i, column=3, value=job_name)  # Colonne C = 3
+        cell.border = border
+    
+    # D5-M5: Noms des machines (ligne 5, colonnes D à D+num_machines-1)
     for i, machine_name in enumerate(machine_names):
-        machine_column = [job[i] for job in normalized_jobs_data]
-        jobs_dict[f'Machine_{i}'] = machine_column
+        cell = ws.cell(row=5, column=4+i, value=machine_name)  # Colonne D = 4
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+        cell.border = border
     
-    # Instructions d'export
-    instructions_data = {
-        'Section': [
-            'DONNÉES EXPORTÉES',
-            '',
-            '1. Source des données',
-            '',
-            '2. Structure du fichier',
-            '',
-            '3. Utilisation',
-            '',
-            '4. Paramètres',
-            '',
-            '5. Remarques',
-            ''
-        ],
-        'Description': [
-            'Données exportées depuis la saisie manuelle de l\'interface',
-            '',
-            '- Ces données ont été saisies manuellement dans l\'application',
-            '- Elles sont maintenant disponibles au format Excel pour réutilisation',
-            '',
-            '- Onglet "Machines": Définition des machines utilisées',
-            '- Onglet "Jobs": Données des jobs avec durées et dates d\'échéance',
-            '',
-            '- Vous pouvez modifier ces données et les réimporter',
-            '- Respectez la structure pour un import réussi',
-            '',
-            f'- Unité de temps: {unite}',
-            f'- Nombre de machines: {len(machine_names)}',
-            f'- Nombre de jobs: {len(job_names)}',
-            '',
-            'Ce fichier peut être modifié et réimporté dans l\'application',
-            'Conservez la structure des onglets et des colonnes'
-        ]
-    }
+    # N5: "Due Date" (en-tête de la colonne des dates d'échéance)
+    due_date_col = 4 + len(machine_names)  # Colonne après la dernière machine
+    ws.cell(row=5, column=due_date_col, value="Due Date")
+    ws.cell(row=5, column=due_date_col).font = header_font
+    ws.cell(row=5, column=due_date_col).fill = header_fill
+    ws.cell(row=5, column=due_date_col).alignment = Alignment(horizontal="center")
+    ws.cell(row=5, column=due_date_col).border = border
     
-    # Créer les DataFrames
-    machines_df = pd.DataFrame(machines_data)
-    jobs_df = pd.DataFrame(jobs_dict)
-    instructions_df = pd.DataFrame(instructions_data)
+    # N6-N16: Dates d'échéance (colonne après les machines, lignes 6 à 6+num_jobs-1)
+    for i, due_date in enumerate(due_dates):
+        cell = ws.cell(row=6+i, column=due_date_col, value=due_date)
+        cell.border = border
     
-    # Écrire dans le fichier Excel avec pandas
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        machines_df.to_excel(writer, sheet_name='Machines', index=False)
-        jobs_df.to_excel(writer, sheet_name='Jobs', index=False)
-        instructions_df.to_excel(writer, sheet_name='Instructions', index=False)
-        
-        # Améliorer la mise en forme
-        workbook = writer.book
-        
-        # Style pour les en-têtes
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
-        
-        # Appliquer le style aux en-têtes de chaque onglet
-        for sheet_name in ['Machines', 'Jobs', 'Instructions']:
-            worksheet = workbook[sheet_name]
-            for cell in worksheet[1]:  # Première ligne (en-têtes)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center")
-            
-            # Ajuster la largeur des colonnes
-            for column in worksheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                worksheet.column_dimensions[column_letter].width = adjusted_width
+    # D6-M16: Matrice des temps de traitement
+    for job_idx, job_data in enumerate(normalized_jobs_data):
+        for machine_idx, duration in enumerate(job_data):
+            cell = ws.cell(row=6+job_idx, column=4+machine_idx, value=duration)
+            cell.border = border
     
+    # Ajuster la largeur des colonnes
+    for col in range(3, due_date_col + 1):  # De C à la colonne Due Date
+        column_letter = ws.cell(row=1, column=col).column_letter
+        ws.column_dimensions[column_letter].width = 12
+    
+    # Ajouter un onglet d'instructions
+    instructions_ws = wb.create_sheet("Instructions")
+    instructions_ws['A1'] = "DONNÉES EXPORTÉES - Format Matriciel"
+    instructions_ws['A1'].font = Font(bold=True, size=14)
+    
+    instructions = [
+        "",
+        "Structure du fichier :",
+        f"- C5: 'JOB' (coin supérieur gauche)",
+        f"- C6-C{5+num_jobs}: Noms des jobs",
+        f"- D5-{ws.cell(row=5, column=3+len(machine_names)).column_letter}5: Noms des machines",
+        f"- {ws.cell(row=5, column=due_date_col).column_letter}6-{ws.cell(row=5, column=due_date_col).column_letter}{5+num_jobs}: Dates d'échéance",
+        f"- D6-{ws.cell(row=5, column=3+len(machine_names)).column_letter}{5+num_jobs}: Matrice des temps de traitement",
+        "",
+        "Paramètres :",
+        f"- Unité de temps: {unite}",
+        f"- Nombre de machines: {len(machine_names)}",
+        f"- Nombre de jobs: {num_jobs}",
+        "",
+        "Ce fichier peut être modifié et réimporté dans l'application.",
+        "Respectez la structure matricielle pour un import réussi."
+    ]
+    
+    for i, instruction in enumerate(instructions):
+        instructions_ws.cell(row=2+i, column=1, value=instruction)
+    
+    # Sauvegarder dans le BytesIO
+    wb.save(output)
     output.seek(0)
     return output.getvalue()
 
