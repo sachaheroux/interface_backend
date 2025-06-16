@@ -619,11 +619,18 @@ def run_smith(request: SmithRequest):
 def run_smith_gantt(request: SmithRequest):
     try:
         result = smith.smith_algorithm(request.jobs)
-        fig = smith.generate_gantt(result["sequence"], request.jobs,
-                                   unite=request.unite,
-                                   job_names=request.job_names)
+        
+        # Extraire les due dates des jobs (format: [[durée, due_date], ...])
+        due_dates = [job[1] for job in request.jobs]
+        
+        # Utiliser create_gantt_figure comme tous les autres algorithmes
+        fig = create_gantt_figure(result, "Diagramme de Gantt - Smith",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=["Machine 1"],  # Smith utilise une seule machine
+                                  due_dates=due_dates)
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         return StreamingResponse(buf, media_type="image/png")
@@ -1757,21 +1764,26 @@ async def import_smith_excel_gantt(file: UploadFile = File(...)):
         # Exécuter l'algorithme Smith
         result = smith.smith_algorithm(smith_jobs_data)
         
-        # Générer le diagramme de Gantt
+        # Extraire les due dates des jobs Smith
+        due_dates = [job[1] for job in smith_jobs_data]
+        
+        # Générer le diagramme de Gantt avec create_gantt_figure
         machines_detected = len(parsed_data["machine_names"])
         title = "Diagramme de Gantt - Smith (Import Excel)"
         if machines_detected > 1:
             title += f" - Utilise seulement '{parsed_data['machine_names'][0]}'"
         
-        fig = smith.generate_gantt(
-            result["sequence"], 
-            smith_jobs_data,
+        fig = create_gantt_figure(
+            result, 
+            title,
             unite=parsed_data["unite"],
-            job_names=parsed_data["job_names"]
+            job_names=parsed_data["job_names"],
+            machine_names=["Machine 1"],  # Smith utilise une seule machine
+            due_dates=due_dates
         )
         
         buf = io.BytesIO()
-        fig.savefig(buf, format="png")
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
         buf.seek(0)
         
