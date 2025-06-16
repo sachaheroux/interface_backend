@@ -490,19 +490,29 @@ def export_manual_data_to_excel(
     }
     
     # Ajouter les colonnes pour chaque machine
+    # D'abord, s'assurer que tous les jobs ont le bon nombre de durées
+    normalized_jobs_data = []
+    for job_idx, job in enumerate(jobs_data):
+        try:
+            if isinstance(job, list):
+                # Étendre ou tronquer le job pour qu'il ait exactement le nombre de machines
+                normalized_job = []
+                for i in range(len(machine_names)):
+                    if i < len(job):
+                        duration = float(job[i]) if job[i] is not None else 0.0
+                    else:
+                        duration = 0.0
+                    normalized_job.append(duration)
+                normalized_jobs_data.append(normalized_job)
+            else:
+                # Si ce n'est pas une liste, créer une liste de zéros
+                normalized_jobs_data.append([0.0] * len(machine_names))
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Erreur dans les données du job '{job_names[job_idx]}': {str(e)}")
+    
+    # Maintenant créer les colonnes pour chaque machine
     for i, machine_name in enumerate(machine_names):
-        machine_column = []
-        for job_idx, job in enumerate(jobs_data):
-            try:
-                # Gérer différents formats de données
-                if isinstance(job, list) and len(job) > i:
-                    duration = float(job[i]) if job[i] is not None else 0.0
-                else:
-                    duration = 0.0
-                machine_column.append(duration)
-            except (ValueError, TypeError, IndexError) as e:
-                raise ValueError(f"Erreur dans les données du job '{job_names[job_idx]}' pour la machine '{machine_name}': {str(e)}")
-        
+        machine_column = [job[i] for job in normalized_jobs_data]
         jobs_dict[f'Machine_{i}'] = machine_column
     
     # Instructions d'export
