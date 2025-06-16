@@ -450,12 +450,13 @@ def export_manual_data_to_excel(
     unite: str = "heures"
 ) -> bytes:
     """
-    Exporte les données saisies manuellement vers un fichier Excel au format matriciel
-    Structure exacte du template :
+    Exporte les données saisies manuellement vers un fichier Excel au format matriciel FIXE 12x12
+    Structure exacte du template (TOUJOURS 12 colonnes et 12 lignes) :
     - C5: "JOB"
-    - C6-C16: Noms des jobs
-    - D5-M5: Noms des machines
-    - N6-N16: Dates d'échéance (colonne "Due Date")
+    - C6-C16: Noms des jobs (max 11 jobs)
+    - D5-M5: Noms des machines (max 10 machines) 
+    - N5: "Due Date" (TOUJOURS colonne N = 14)
+    - N6-N16: Dates d'échéance 
     - D6-M16: Matrice des temps de traitement
     
     Args:
@@ -480,6 +481,12 @@ def export_manual_data_to_excel(
     if len(due_dates) != num_jobs:
         raise ValueError(f"Le nombre de dates d'échéance ({len(due_dates)}) ne correspond pas au nombre de jobs ({num_jobs})")
     
+    # Debug : afficher les données reçues
+    print(f"DEBUG - jobs_data: {jobs_data}")
+    print(f"DEBUG - due_dates: {due_dates}")
+    print(f"DEBUG - job_names: {job_names}")
+    print(f"DEBUG - machine_names: {machine_names}")
+    
     # Normaliser les données des jobs pour s'assurer qu'elles ont toutes la bonne longueur
     normalized_jobs_data = []
     for job_idx, job in enumerate(jobs_data):
@@ -494,9 +501,11 @@ def export_manual_data_to_excel(
                         duration = 0.0
                     normalized_job.append(duration)
                 normalized_jobs_data.append(normalized_job)
+                print(f"DEBUG - Job {job_idx} ({job_names[job_idx]}): {job} -> {normalized_job}")
             else:
                 # Si ce n'est pas une liste, créer une liste de zéros
                 normalized_jobs_data.append([0.0] * len(machine_names))
+                print(f"DEBUG - Job {job_idx} ({job_names[job_idx]}): Not a list, created zeros")
         except (ValueError, TypeError) as e:
             raise ValueError(f"Erreur dans les données du job '{job_names[job_idx]}': {str(e)}")
     
@@ -521,6 +530,8 @@ def export_manual_data_to_excel(
         bottom=Side(style='thin')
     )
     
+    # STRUCTURE FIXE 12x12 - TOUJOURS utiliser ces positions exactes
+    
     # C5: "JOB" (coin supérieur gauche)
     ws['C5'] = "JOB"
     ws['C5'].font = header_font
@@ -528,64 +539,88 @@ def export_manual_data_to_excel(
     ws['C5'].alignment = Alignment(horizontal="center")
     ws['C5'].border = border
     
-    # C6-C16: Noms des jobs (colonne C, lignes 6 à 6+num_jobs-1)
-    for i, job_name in enumerate(job_names):
+    # C6-C16: Noms des jobs (colonne C = 3, lignes 6 à 16 = max 11 jobs)
+    for i in range(11):  # TOUJOURS 11 lignes (C6 à C16)
+        if i < len(job_names):
+            job_name = job_names[i]
+        else:
+            job_name = ""  # Cellule vide si pas assez de jobs
+        
         cell = ws.cell(row=6+i, column=3, value=job_name)  # Colonne C = 3
         cell.border = border
     
-    # D5-M5: Noms des machines (ligne 5, colonnes D à D+num_machines-1)
-    for i, machine_name in enumerate(machine_names):
-        cell = ws.cell(row=5, column=4+i, value=machine_name)  # Colonne D = 4
+    # D5-M5: Noms des machines (ligne 5, colonnes D=4 à M=13 = max 10 machines)
+    for i in range(10):  # TOUJOURS 10 colonnes (D à M)
+        if i < len(machine_names):
+            machine_name = machine_names[i]
+        else:
+            machine_name = ""  # Cellule vide si pas assez de machines
+            
+        cell = ws.cell(row=5, column=4+i, value=machine_name)  # Colonnes D=4 à M=13
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
         cell.border = border
     
-    # N5: "Due Date" (en-tête de la colonne des dates d'échéance)
-    due_date_col = 4 + len(machine_names)  # Colonne après la dernière machine
-    ws.cell(row=5, column=due_date_col, value="Due Date")
-    ws.cell(row=5, column=due_date_col).font = header_font
-    ws.cell(row=5, column=due_date_col).fill = header_fill
-    ws.cell(row=5, column=due_date_col).alignment = Alignment(horizontal="center")
-    ws.cell(row=5, column=due_date_col).border = border
+    # N5: "Due Date" (TOUJOURS colonne N = 14)
+    ws.cell(row=5, column=14, value="Due Date")  # Colonne N = 14
+    ws.cell(row=5, column=14).font = header_font
+    ws.cell(row=5, column=14).fill = header_fill
+    ws.cell(row=5, column=14).alignment = Alignment(horizontal="center")
+    ws.cell(row=5, column=14).border = border
     
-    # N6-N16: Dates d'échéance (colonne après les machines, lignes 6 à 6+num_jobs-1)
-    for i, due_date in enumerate(due_dates):
-        cell = ws.cell(row=6+i, column=due_date_col, value=due_date)
+    # N6-N16: Dates d'échéance (colonne N=14, lignes 6 à 16)
+    for i in range(11):  # TOUJOURS 11 lignes (N6 à N16)
+        if i < len(due_dates):
+            due_date = due_dates[i]
+        else:
+            due_date = ""  # Cellule vide si pas assez de dates
+            
+        cell = ws.cell(row=6+i, column=14, value=due_date)  # Colonne N = 14
         cell.border = border
     
-    # D6-M16: Matrice des temps de traitement
-    for job_idx, job_data in enumerate(normalized_jobs_data):
-        for machine_idx, duration in enumerate(job_data):
+    # D6-M16: Matrice des temps de traitement (colonnes D=4 à M=13, lignes 6 à 16)
+    for job_idx in range(11):  # TOUJOURS 11 lignes de jobs
+        for machine_idx in range(10):  # TOUJOURS 10 colonnes de machines
+            if job_idx < len(normalized_jobs_data) and machine_idx < len(normalized_jobs_data[job_idx]):
+                duration = normalized_jobs_data[job_idx][machine_idx]
+            else:
+                duration = ""  # Cellule vide si pas de données
+                
             cell = ws.cell(row=6+job_idx, column=4+machine_idx, value=duration)
             cell.border = border
     
-    # Ajuster la largeur des colonnes
-    for col in range(3, due_date_col + 1):  # De C à la colonne Due Date
+    # Ajuster la largeur des colonnes (C à N)
+    for col in range(3, 15):  # De C=3 à N=14
         column_letter = ws.cell(row=1, column=col).column_letter
         ws.column_dimensions[column_letter].width = 12
     
     # Ajouter un onglet d'instructions
     instructions_ws = wb.create_sheet("Instructions")
-    instructions_ws['A1'] = "DONNÉES EXPORTÉES - Format Matriciel"
+    instructions_ws['A1'] = "DONNÉES EXPORTÉES - Format Matriciel 12x12"
     instructions_ws['A1'].font = Font(bold=True, size=14)
     
     instructions = [
         "",
-        "Structure du fichier :",
-        f"- C5: 'JOB' (coin supérieur gauche)",
-        f"- C6-C{5+num_jobs}: Noms des jobs",
-        f"- D5-{ws.cell(row=5, column=3+len(machine_names)).column_letter}5: Noms des machines",
-        f"- {ws.cell(row=5, column=due_date_col).column_letter}6-{ws.cell(row=5, column=due_date_col).column_letter}{5+num_jobs}: Dates d'échéance",
-        f"- D6-{ws.cell(row=5, column=3+len(machine_names)).column_letter}{5+num_jobs}: Matrice des temps de traitement",
+        "Structure FIXE du fichier (12 colonnes x 12 lignes) :",
+        "- C5: 'JOB' (coin supérieur gauche)",
+        "- C6-C16: Noms des jobs (max 11 jobs)",
+        "- D5-M5: Noms des machines (max 10 machines)",
+        "- N5: 'Due Date' (TOUJOURS colonne N)",
+        "- N6-N16: Dates d'échéance",
+        "- D6-M16: Matrice des temps de traitement",
         "",
-        "Paramètres :",
+        "Paramètres actuels :",
         f"- Unité de temps: {unite}",
-        f"- Nombre de machines: {len(machine_names)}",
-        f"- Nombre de jobs: {num_jobs}",
+        f"- Nombre de machines utilisées: {len(machine_names)}/10",
+        f"- Nombre de jobs utilisés: {num_jobs}/11",
         "",
-        "Ce fichier peut être modifié et réimporté dans l'application.",
-        "Respectez la structure matricielle pour un import réussi."
+        "IMPORTANT :",
+        "- La structure 12x12 est FIXE pour compatibilité d'import",
+        "- Les cellules vides sont normales si moins de données",
+        "- La colonne 'Due Date' est TOUJOURS en colonne N",
+        "",
+        "Ce fichier peut être modifié et réimporté dans l'application."
     ]
     
     for i, instruction in enumerate(instructions):
