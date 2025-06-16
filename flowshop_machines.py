@@ -374,10 +374,10 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
                 ax.axvline(x=due_date, color=main_color, linestyle='--', linewidth=2, alpha=0.8, zorder=5)
                 
                 # Empiler les dates dues verticalement AU-DESSUS de la première machine
-                # Comme l'axe Y est inversé, y_min correspond au haut du graphique
+                # Comme l'axe Y est inversé, nous devons utiliser des valeurs négatives pour aller "au-dessus"
                 for i, (color, job_name) in enumerate(job_info_list):
-                    # Position au-dessus de la première machine (utiliser y_min car l'axe est inversé)
-                    y_position = y_min - 0.3 - (i * 0.5)
+                    # Position au-dessus de la première machine (valeurs négatives car axe inversé)
+                    y_position = -0.8 - (i * 0.5)
                     
                     # Créer une boîte colorée avec le nom du job et la date due
                     bbox_props = dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.8, edgecolor='black')
@@ -385,17 +385,22 @@ def create_gantt_chart(jobs_data, due_dates, machine_names=None, stage_names=Non
                            ha='center', va='center', fontsize=9, color='white', weight='bold',
                            bbox=bbox_props, zorder=10)
                     
-                    max_stack_height = max(max_stack_height, 0.3 + (i + 1) * 0.5)
+                    max_stack_height = max(max_stack_height, 0.8 + (i + 1) * 0.5)
             
             # Ajuster les limites de l'axe Y pour faire de la place aux due dates
             if max_stack_height > 0:
                 extension = max_stack_height + 0.2
-                ax.set_ylim(y_min - extension, y_max)
+                # Étendre vers le haut (valeurs négatives car axe inversé)
+                ax.set_ylim(-extension, len(machine_display_names) - 0.5)
 
     # Améliorer les axes (comme create_gantt_figure)
     ax.set_xlim(0, result["makespan"])
     ax.set_xlabel("Temps", fontsize=12, fontweight='bold')
     ax.set_ylabel("Machines", fontsize=12, fontweight='bold')
+    
+    # S'assurer que toutes les machines sont visibles (si pas de dates dues)
+    if not due_date_colors:
+        ax.set_ylim(-0.5, len(machine_display_names) - 0.5)
     
     # Titre avec style
     ax.set_title("Flowshop Flexible - Machines Multiples", fontsize=14, fontweight='bold', pad=20)
