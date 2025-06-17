@@ -463,7 +463,7 @@ def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
             machines_dict.setdefault(m_idx, []).append({
                 "job": t["job"],
                 "start": t["start"],
-                "duration": t["duration"],
+                "duration": t["duration"] if "duration" in t else t["end"] - t["start"],
                 "type": "task"
             })
         
@@ -484,12 +484,12 @@ def run_jobshop_contraintes_gantt(request: JobshopSPTRequest):
         
         result_formatted = {"machines": machines_dict}
         
-        # Utiliser la fonction Gantt avec support des temps de setup
-        fig = create_gantt_figure_with_setup(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (CP)",
-                                           unite=request.unite,
-                                           job_names=request.job_names,
-                                           machine_names=request.machine_names,
-                                           due_dates=request.due_dates)
+        # Utiliser la fonction Gantt STANDARD pour un rendu visuel identique à SPT/EDD
+        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (CP)",
+                                  unite=request.unite,
+                                  job_names=request.job_names,
+                                  machine_names=request.machine_names,
+                                  due_dates=request.due_dates)
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
         plt.close(fig)
@@ -665,7 +665,7 @@ async def import_jobshop_contraintes_excel_gantt(file: UploadFile = File(...)):
             release_times=None
         )
         
-        # Créer le diagramme de Gantt avec support des temps de setup
+        # Créer le diagramme de Gantt avec setups mais rendu visuel standard
         machines_dict = {}
         
         # Ajouter les tâches normales
@@ -674,7 +674,7 @@ async def import_jobshop_contraintes_excel_gantt(file: UploadFile = File(...)):
             machines_dict.setdefault(m_idx, []).append({
                 "job": t["job"],
                 "start": t["start"],
-                "duration": t["duration"],
+                "duration": t["duration"] if "duration" in t else t["end"] - t["start"],
                 "type": "task"
             })
         
@@ -694,13 +694,11 @@ async def import_jobshop_contraintes_excel_gantt(file: UploadFile = File(...)):
             machines_dict[m_idx].sort(key=lambda x: x["start"])
         
         result_formatted = {"machines": machines_dict}
-        
-        # Utiliser la fonction Gantt avec support des temps de setup
-        fig = create_gantt_figure_with_setup(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (Import Excel)",
-                                           unite=parsed_data["unite"],
-                                           job_names=parsed_data["job_names"],
-                                           machine_names=parsed_data["machine_names"],
-                                           due_dates=parsed_data["due_dates"])
+        fig = create_gantt_figure(result_formatted, "Diagramme de Gantt - Jobshop Contraintes (Import Excel)",
+                                  unite=parsed_data["unite"],
+                                  job_names=parsed_data["job_names"],
+                                  machine_names=parsed_data["machine_names"],
+                                  due_dates=parsed_data["due_dates"])
         
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
