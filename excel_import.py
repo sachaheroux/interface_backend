@@ -562,10 +562,10 @@ def parse_jobshop_excel(file_content: bytes) -> Dict:
                 
                 if pd.notna(cell_value) and str(cell_value).strip():
                     try:
-                        # Parser le format (séquence, temps)
+                        # Parser le format séquence, temps (avec ou sans parenthèses)
                         cell_str = str(cell_value).strip()
                         
-                        # Enlever les parenthèses et espaces
+                        # Enlever les parenthèses si présentes
                         if cell_str.startswith('(') and cell_str.endswith(')'):
                             cell_str = cell_str[1:-1]
                         
@@ -762,7 +762,7 @@ def export_jobshop_data_to_excel(
                 # Si plusieurs tâches sur la même machine, prendre la première
                 if tasks:
                     sequence, duration = tasks[0]
-                    cell_value = f"({sequence}, {duration})"
+                    cell_value = f"{sequence}, {duration}"
                     ws.cell(row=row, column=col_idx, value=cell_value).alignment = cell_alignment
         
         # Date due
@@ -775,9 +775,9 @@ def export_jobshop_data_to_excel(
     ws['A20'].font = Font(italic=True)
     
     # Instructions
-    ws['C22'] = "Format des cellules de temps: (séquence, durée)"
+    ws['C22'] = "Format des cellules de temps: séquence, durée"
     ws['C22'].font = Font(italic=True, size=10)
-    ws['C23'] = "Exemple: (1, 35) = 1ère tâche, durée 35"
+    ws['C23'] = "Exemple: 1, 35 = 1ère tâche, durée 35"
     ws['C23'].font = Font(italic=True, size=10)
     
     # Ajuster la largeur des colonnes
