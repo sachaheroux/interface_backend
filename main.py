@@ -1508,6 +1508,76 @@ def run_pl_chart(request: dict):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# ===== IMPORT/EXPORT EXCEL POUR LIGNE D'ASSEMBLAGE =====
+
+class LigneAssemblageExportDataRequest(BaseModel):
+    tasks_data: List[dict]  # Format: [{"task_id": 1, "name": "Tâche 1", "duration": 20, "predecessors": None}]
+    cycle_time: float
+    unite: str = "minutes"
+    format_type: str = "ligne_assemblage"
+
+@app.post("/ligne_assemblage/pl/export-excel")
+def export_ligne_assemblage_pl_data_to_excel(request: LigneAssemblageExportDataRequest):
+    try:
+        # Utiliser la fonction d'export spécialisée pour ligne d'assemblage
+        return excel_import.export_ligne_assemblage_to_excel(
+            request.tasks_data,
+            request.cycle_time,
+            request.unite,
+            "PL"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'export: {str(e)}")
+
+@app.post("/ligne_assemblage/lpt/export-excel")
+def export_ligne_assemblage_lpt_data_to_excel(request: LigneAssemblageExportDataRequest):
+    try:
+        return excel_import.export_ligne_assemblage_to_excel(
+            request.tasks_data,
+            request.cycle_time,
+            request.unite,
+            "LPT"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'export: {str(e)}")
+
+@app.post("/ligne_assemblage/comsoal/export-excel")
+def export_ligne_assemblage_comsoal_data_to_excel(request: LigneAssemblageExportDataRequest):
+    try:
+        return excel_import.export_ligne_assemblage_to_excel(
+            request.tasks_data,
+            request.cycle_time,
+            request.unite,
+            "COMSOAL"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'export: {str(e)}")
+
+@app.post("/ligne_assemblage/pl/import-excel")
+async def import_ligne_assemblage_pl_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage"):
+    try:
+        # Lire le fichier Excel et parser selon le format ligne d'assemblage
+        result = await excel_import.parse_ligne_assemblage_excel(file)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erreur lors de l'import: {str(e)}")
+
+@app.post("/ligne_assemblage/lpt/import-excel")
+async def import_ligne_assemblage_lpt_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage"):
+    try:
+        result = await excel_import.parse_ligne_assemblage_excel(file)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erreur lors de l'import: {str(e)}")
+
+@app.post("/ligne_assemblage/comsoal/import-excel")
+async def import_ligne_assemblage_comsoal_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage"):
+    try:
+        result = await excel_import.parse_ligne_assemblage_excel(file)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erreur lors de l'import: {str(e)}")
+
 @app.post("/ligne_assemblage_mixte/goulot")
 def run_goulot_analysis(request: dict):
     try:

@@ -1296,4 +1296,313 @@ def export_manual_data_to_excel(
     output.seek(0)
     return output.getvalue()
 
+
+# ===== FONCTIONS SPÉCIFIQUES POUR LIGNE D'ASSEMBLAGE =====
+
+async def parse_ligne_assemblage_excel(file) -> Dict:
+    """
+    Parse un fichier Excel pour les algorithmes de ligne d'assemblage.
+    Format attendu :
+    - C6: "Tâche" (header)
+    - C7+: Noms des tâches
+    - D6: "Durée" (header)
+    - D7+: Durées des tâches
+    - E6: "Prédécesseur" (header)  
+    - E7+: Prédécesseurs des tâches
+    
+    Args:
+        file: Fichier Excel uploadé
+        
+    Returns:
+        Dict contenant les données formatées pour l'API ligne d'assemblage
+    """
+    try:
+        # Lire le contenu du fichier
+        file_content = await file.read()
+        
+        # Lire le fichier Excel sans en-tête automatique
+        excel_file = io.BytesIO(file_content)
+        df = pd.read_excel(excel_file, header=None)
+        
+        # Vérifier la structure minimale
+        if df.shape[0] < 10 or df.shape[1] < 6:
+            raise ValueError("Structure de fichier incorrecte")
+        
+        # Vérifier les headers en ligne 6 (index 5)
+        task_header = df.iloc[5, 2]  # C6
+        duration_header = df.iloc[5, 3]  # D6
+        predecessor_header = df.iloc[5, 4]  # E6
+        
+        if (pd.isna(task_header) or str(task_header).strip().lower() != "tâche" and 
+            str(task_header).strip().lower() != "tache"):
+            raise ValueError("Format non reconnu - cellule C6 doit contenir 'Tâche'")
+        
+        # Extraire les données des tâches
+        tasks_data = []
+        cycle_time = 70.0  # valeur par défaut
+        unite = "minutes"  # valeur par défaut
+        errors = []
+        
+        # Parcourir les lignes à partir de la ligne 7 (index 6)
+        task_id = 1
+        for i in range(6, min(df.shape[0], 50)):  # Limiter à 50 tâches max
+            row_num = i + 1  # Numéro de ligne Excel (1-indexé)
+            
+            # Nom de la tâche (colonne C)
+            task_name = df.iloc[i, 2]
+            if pd.isna(task_name) or not str(task_name).strip():
+                continue  # Ligne vide, on passe
+            
+            task_name = str(task_name).strip()
+            
+            # Durée de la tâche (colonne D)
+            duration = df.iloc[i, 3]
+            if pd.isna(duration) or not str(duration).strip():
+                errors.append(f"Tâche '{task_name}' (ligne {row_num}): durée manquante")
+                continue
+            
+            try:
+                duration_val = float(duration)
+                if duration_val <= 0:
+                    errors.append(f"Tâche '{task_name}' (ligne {row_num}): durée doit être positive")
+                    continue
+            except (ValueError, TypeError):
+                errors.append(f"Tâche '{task_name}' (ligne {row_num}): durée invalide '{duration}'")
+                continue
+            
+            # Prédécesseurs (colonne E)
+            predecessors = df.iloc[i, 4]
+            predecessors_val = None
+            
+            if pd.notna(predecessors) and str(predecessors).strip():
+                predecessors_str = str(predecessors).strip()
+                if predecessors_str and predecessors_str != "0":
+                    # Parser les prédécesseurs (format: "1,2,3" ou "1")
+                    try:
+                        pred_list = [int(p.strip()) for p in predecessors_str.split(',') if p.strip()]
+                        if len(pred_list) == 1:
+                            predecessors_val = pred_list[0]
+                        elif len(pred_list) > 1:
+                            predecessors_val = pred_list
+                    except (ValueError, TypeError):
+                        errors.append(f"Tâche '{task_name}' (ligne {row_num}): prédécesseurs invalides '{predecessors_str}'")
+            
+            # Ajouter la tâche
+            tasks_data.append({
+                "id": task_id,
+                "name": task_name,
+                "predecessors": predecessors_val,
+                "duration": duration_val
+            })
+            
+            task_id += 1
+        
+        # Chercher le temps de cycle et l'unité dans le fichier
+        # Chercher dans différentes cellules possibles
+        for row in range(df.shape[0]):
+            for col in range(df.shape[1]):
+                cell_value = df.iloc[row, col]
+                if pd.notna(cell_value):
+                    cell_str = str(cell_value).lower().strip()
+                    if "cycle" in cell_str or "temps de cycle" in cell_str:
+                        # Chercher la valeur dans les cellules adjacentes
+                        for offset in [1, 2, 3]:
+                            if col + offset < df.shape[1]:
+                                try:
+                                    cycle_val = df.iloc[row, col + offset]
+                                    if pd.notna(cycle_val):
+                                        cycle_time = float(cycle_val)
+                                        break
+                                except:
+                                    pass
+        
+        # Si il y a des erreurs, les signaler
+        if errors:
+            error_msg = "Erreurs dans le fichier Excel:\n" + "\n".join(f"• {err}" for err in errors[:10])
+            if len(errors) > 10:
+                error_msg += f"\n... et {len(errors) - 10} autres erreurs"
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        if not tasks_data:
+            raise HTTPException(
+                status_code=400,
+                detail="Aucune tâche valide trouvée. Vérifiez que vous avez rempli les noms, durées et prédécesseurs."
+            )
+        
+        return {
+            "tasks_data": tasks_data,
+            "cycle_time": cycle_time,
+            "unite": unite
+        }
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel: {str(e)}")
+
+
+def export_ligne_assemblage_to_excel(
+    tasks_data: List[dict],
+    cycle_time: float,
+    unite: str = "minutes",
+    algorithm_name: str = "Ligne d'assemblage"
+) -> bytes:
+    """
+    Exporte les données de ligne d'assemblage vers Excel.
+    Format de sortie :
+    - B7+: ID des tâches (1, 2, 3...)
+    - C6: "Tâche", C7+: Noms des tâches
+    - D6: "Durée", D7+: Durées des tâches
+    - E6: "Prédécesseur", E7+: Prédécesseurs des tâches
+    
+    Args:
+        tasks_data: Liste des tâches avec task_id, name, duration, predecessors
+        cycle_time: Temps de cycle
+        unite: Unité de temps
+        algorithm_name: Nom de l'algorithme
+        
+    Returns:
+        bytes: Contenu du fichier Excel
+    """
+    try:
+        from fastapi.responses import StreamingResponse
+        
+        # Validation des données d'entrée
+        if not tasks_data:
+            raise ValueError("Aucune donnée de tâche fournie")
+        
+        # Créer un BytesIO pour le fichier Excel
+        output = io.BytesIO()
+        
+        # Créer un workbook avec openpyxl
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"Export_{algorithm_name}"
+        
+        # Styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Headers en ligne 6
+        # B6: "ID" (pour aider l'utilisateur)
+        ws['B6'] = "ID"
+        ws['B6'].font = header_font
+        ws['B6'].fill = header_fill
+        ws['B6'].alignment = Alignment(horizontal="center")
+        ws['B6'].border = border
+        
+        # C6: "Tâche"
+        ws['C6'] = "Tâche"
+        ws['C6'].font = header_font
+        ws['C6'].fill = header_fill
+        ws['C6'].alignment = Alignment(horizontal="center")
+        ws['C6'].border = border
+        
+        # D6: "Durée"
+        ws['D6'] = "Durée"
+        ws['D6'].font = header_font
+        ws['D6'].fill = header_fill
+        ws['D6'].alignment = Alignment(horizontal="center")
+        ws['D6'].border = border
+        
+        # E6: "Prédécesseur"
+        ws['E6'] = "Prédécesseur"
+        ws['E6'].font = header_font
+        ws['E6'].fill = header_fill
+        ws['E6'].alignment = Alignment(horizontal="center")
+        ws['E6'].border = border
+        
+        # Données à partir de la ligne 7
+        for i, task in enumerate(tasks_data):
+            row = 7 + i
+            
+            # B7+: ID des tâches (task_id ou index+1)
+            task_id = task.get("task_id", i + 1)
+            ws.cell(row=row, column=2, value=task_id).border = border
+            
+            # C7+: Noms des tâches
+            ws.cell(row=row, column=3, value=task.get("name", f"Tâche {task_id}")).border = border
+            
+            # D7+: Durées des tâches
+            ws.cell(row=row, column=4, value=task.get("duration", 0)).border = border
+            
+            # E7+: Prédécesseurs des tâches
+            predecessors = task.get("predecessors")
+            if predecessors is None:
+                pred_str = ""
+            elif isinstance(predecessors, list):
+                pred_str = ",".join(map(str, predecessors))
+            else:
+                pred_str = str(predecessors)
+            
+            ws.cell(row=row, column=5, value=pred_str).border = border
+        
+        # Informations supplémentaires
+        info_row = 7 + len(tasks_data) + 2
+        
+        ws.cell(row=info_row, column=2, value="Temps de cycle:")
+        ws.cell(row=info_row, column=3, value=cycle_time)
+        
+        ws.cell(row=info_row + 1, column=2, value="Unité:")
+        ws.cell(row=info_row + 1, column=3, value=unite)
+        
+        ws.cell(row=info_row + 2, column=2, value="Algorithme:")
+        ws.cell(row=info_row + 2, column=3, value=algorithm_name)
+        
+        # Ajuster la largeur des colonnes
+        ws.column_dimensions['B'].width = 8
+        ws.column_dimensions['C'].width = 15
+        ws.column_dimensions['D'].width = 12
+        ws.column_dimensions['E'].width = 15
+        
+        # Ajouter un onglet d'instructions
+        instructions_ws = wb.create_sheet("Instructions")
+        instructions_ws['A1'] = f"EXPORT {algorithm_name.upper()} - LIGNE D'ASSEMBLAGE"
+        instructions_ws['A1'].font = Font(bold=True, size=14)
+        
+        instructions = [
+            "",
+            "Structure du fichier :",
+            "- Colonne B: ID des tâches (pour référence, non importé)",
+            "- Colonne C: Noms des tâches",
+            "- Colonne D: Durées des tâches",
+            "- Colonne E: Prédécesseurs (vide si aucun, sinon IDs séparés par virgules)",
+            "",
+            "Format d'import attendu :",
+            "- Headers en ligne 6 (C6=Tâche, D6=Durée, E6=Prédécesseur)",
+            "- Données à partir de la ligne 7",
+            "",
+            "Paramètres actuels :",
+            f"- Temps de cycle: {cycle_time} {unite}",
+            f"- Nombre de tâches: {len(tasks_data)}",
+            f"- Algorithme: {algorithm_name}",
+            "",
+            "Ce fichier peut être modifié et réimporté dans l'application."
+        ]
+        
+        for i, instruction in enumerate(instructions):
+            instructions_ws.cell(row=2+i, column=1, value=instruction)
+        
+        # Sauvegarder dans le BytesIO
+        wb.save(output)
+        output.seek(0)
+        
+        # Retourner une réponse de streaming
+        return StreamingResponse(
+            io.BytesIO(output.getvalue()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Export_{algorithm_name}_LigneAssemblage.xlsx"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'export: {str(e)}")
  
