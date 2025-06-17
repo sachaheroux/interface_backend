@@ -1183,6 +1183,93 @@ def run_flowshop_machines_multiples_agenda(request: FlexibleFlowshopRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# ----------- FlowshopMM Import/Export -----------
+
+@app.post("/flowshop/machines_multiples/import-excel")
+async def import_flowshop_mm_excel(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_mm_excel(file_content)
+        
+        # Appeler l'algorithme FlowshopMM directement avec les données parsées
+        result = flowshop_machines.solve_flexible_flowshop(
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"],
+            machine_names=parsed_data["stage_names"],
+            stage_names=parsed_data["stage_names"],
+            machines_per_stage=parsed_data["machines_per_stage"],
+            machine_priorities=parsed_data["machine_priorities"]
+        )
+        
+        # Ajouter les données parsées au résultat pour l'affichage frontend
+        result.update({
+            "imported_data": parsed_data
+        })
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/flowshop/machines_multiples/import-excel-gantt")
+async def import_flowshop_mm_excel_gantt(file: UploadFile = File(...)):
+    try:
+        file_content = await file.read()
+        parsed_data = excel_import.parse_flowshop_mm_excel(file_content)
+        
+        # Appeler l'algorithme FlowshopMM pour obtenir les résultats
+        result = flowshop_machines.solve_flexible_flowshop(
+            parsed_data["jobs_data"], 
+            parsed_data["due_dates"],
+            machine_names=parsed_data["stage_names"],
+            stage_names=parsed_data["stage_names"],
+            machines_per_stage=parsed_data["machines_per_stage"],
+            machine_priorities=parsed_data["machine_priorities"]
+        )
+        
+        # Créer le diagramme de Gantt
+        fig = create_gantt_figure(result, "Diagramme de Gantt - FlowshopMM (Import Excel)",
+                                  unite=parsed_data["unite"],
+                                  job_names=parsed_data["job_names"],
+                                  machine_names=parsed_data["stage_names"],
+                                  due_dates=parsed_data["due_dates"])
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# Modèle pour l'export FlowshopMM
+class FlowshopMMExportDataRequest(BaseModel):
+    jobs_data: List[List[List[List[float]]]]  # Format FlowshopMM: job -> stage -> alternatives -> [machine_id, duration]
+    due_dates: List[float]
+    job_names: List[str]
+    stage_names: List[str]
+    machines_per_stage: List[int]
+    unite: str = "heures"
+
+@app.post("/flowshop/machines_multiples/export-excel")
+def export_flowshop_mm_data_to_excel(request: FlowshopMMExportDataRequest):
+    try:
+        excel_content = excel_import.export_flowshop_mm_data_to_excel(
+            request.jobs_data,
+            request.due_dates,
+            request.job_names,
+            request.stage_names,
+            request.machines_per_stage,
+            request.unite
+        )
+        
+        return StreamingResponse(
+            io.BytesIO(excel_content),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=flowshop_mm_export.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 # ----------- Ligne d'assemblage - Précédence -----------
 
 class PrecedenceRequest:

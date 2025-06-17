@@ -49,7 +49,7 @@ def planifier_jobshop_edd(job_names: List[str], machine_names: List[str], jobs_d
         time = round(time, 2)
 
     makespan = max(machine_time.values())
-    flowtime = sum(completion_times.values())
+    flowtime = sum(completion_times.values()) / len(jobs_data)
 
     schedule = []
     for m_index, tasks in machines.items():

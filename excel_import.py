@@ -795,6 +795,296 @@ def export_jobshop_data_to_excel(
     output.seek(0)
     return output.getvalue()
 
+def parse_flowshop_mm_excel(file_content: bytes) -> Dict:
+    """
+    Parse un fichier Excel pour l'algorithme Flowshop Machines Multiples
+    Format spécifique avec cellules contenant plusieurs durées séparées par des points-virgules
+    Exemple: "35; 43.4; 33.5" pour plusieurs machines sur la même étape
+    
+    Args:
+        file_content: Contenu du fichier Excel en bytes
+        
+    Returns:
+        Dict contenant les données formatées pour l'API FlowshopMM
+    """
+    try:
+        # Lire le fichier Excel
+        excel_file = io.BytesIO(file_content)
+        df = pd.read_excel(excel_file, header=None)
+        
+        # Vérifier la structure minimale
+        if df.shape[0] < 20 or df.shape[1] < 14:
+            raise ValueError("Structure de fichier incorrecte")
+        
+        # Vérifier que c'est bien le format FlowshopMM (cellule C5 doit contenir "Job")
+        job_header = df.iloc[4, 2]  # C5 (ligne 5, colonne C)
+        if pd.isna(job_header) or str(job_header).strip().lower() != "job":
+            raise ValueError("Format non reconnu - cellule C5 doit contenir 'Job'")
+        
+        # Extraire l'unité de temps (cellule C20)
+        unite = "heures"  # valeur par défaut
+        try:
+            unite_cell = df.iloc[19, 2]  # C20
+            if pd.notna(unite_cell):
+                unite_str = str(unite_cell).lower().strip()
+                if unite_str == 'j':
+                    unite = "jours"
+                elif unite_str == 'h':
+                    unite = "heures"
+                elif unite_str == 'm':
+                    unite = "minutes"
+        except:
+            pass
+        
+        # Extraire les données des jobs
+        job_names = []
+        jobs_data = []
+        due_dates = []
+        errors = []
+        machines_per_stage = []
+        
+        # Parcourir les lignes 6-15 (index 5-14) pour les jobs
+        for i in range(5, 15):
+            row_num = i + 1  # Numéro de ligne Excel (1-indexé)
+            
+            # Nom du job (colonne C)
+            job_name = df.iloc[i, 2]
+            if pd.isna(job_name) or not str(job_name).strip():
+                continue  # Ligne vide, on passe
+            
+            job_name = str(job_name).strip()
+            
+            # Extraire les durées du job (colonnes D-M, index 3-12)
+            job_stages = []
+            stage_errors = []
+            
+            for j in range(3, 13):  # colonnes D à M (10 étapes max)
+                col_letter = chr(68 + j - 3)  # D, E, F, G, H, I, J, K, L, M
+                cell_value = df.iloc[i, j]
+                
+                if pd.notna(cell_value) and str(cell_value).strip():
+                    try:
+                        # Parser le format avec plusieurs durées séparées par des points-virgules
+                        cell_str = str(cell_value).strip()
+                        
+                        # Séparer par point-virgule
+                        duration_parts = [part.strip() for part in cell_str.split(';')]
+                        
+                        stage_alternatives = []
+                        for alt_index, duration_str in enumerate(duration_parts):
+                            if duration_str:  # Ignorer les parties vides
+                                try:
+                                    duration = float(duration_str)
+                                    if duration < 0:
+                                        stage_errors.append(f"Durée négative en {col_letter}{row_num}: {duration}")
+                                        continue
+                                    
+                                    # Machine ID : étape (base 1) * 10 + (alternative + 1)
+                                    machine_id = (j - 2) * 10 + (alt_index + 1)  # j-2 car colonne D = étape 1
+                                    stage_alternatives.append([machine_id, duration])
+                                    
+                                except (ValueError, TypeError):
+                                    stage_errors.append(f"Valeur invalide en {col_letter}{row_num}: '{duration_str}' (doit être un nombre)")
+                        
+                        if stage_alternatives:
+                            job_stages.append(stage_alternatives)
+                            
+                            # Mettre à jour le nombre max de machines par étape
+                            stage_index = j - 3
+                            while len(machines_per_stage) <= stage_index:
+                                machines_per_stage.append(1)
+                            machines_per_stage[stage_index] = max(machines_per_stage[stage_index], len(stage_alternatives))
+                        
+                    except Exception as e:
+                        stage_errors.append(f"Erreur en {col_letter}{row_num}: '{cell_value}' - {str(e)}")
+            
+            # Vérifier la date due (colonne N, index 13)
+            due_date = df.iloc[i, 13]
+            due_date_val = 10.0  # valeur par défaut
+            
+            if pd.notna(due_date) and str(due_date).strip():
+                try:
+                    due_date_val = float(due_date)
+                    if due_date_val < 0:
+                        errors.append(f"Date due négative pour '{job_name}' en N{row_num}: {due_date}")
+                        due_date_val = 10.0
+                except (ValueError, TypeError):
+                    errors.append(f"Date due invalide pour '{job_name}' en N{row_num}: '{due_date}' (doit être un nombre)")
+                    due_date_val = 10.0
+            
+            # Ajouter les erreurs d'étapes si il y en a
+            if stage_errors:
+                errors.extend([f"Job '{job_name}': {err}" for err in stage_errors])
+            
+            # Ajouter le job seulement s'il a au moins une étape valide
+            if job_stages:
+                job_names.append(job_name)
+                jobs_data.append(job_stages)
+                due_dates.append(due_date_val)
+            elif not stage_errors:  # Pas d'erreurs mais pas d'étapes non plus
+                errors.append(f"Job '{job_name}' (ligne {row_num}): aucune étape valide trouvée")
+        
+        # Si il y a des erreurs, les signaler
+        if errors:
+            error_msg = "Erreurs dans le fichier Excel FlowshopMM:\n" + "\n".join(f"• {err}" for err in errors[:10])
+            if len(errors) > 10:
+                error_msg += f"\n... et {len(errors) - 10} autres erreurs"
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        if not job_names:
+            raise HTTPException(
+                status_code=400,
+                detail="Aucun job valide trouvé. Vérifiez que vous avez rempli les noms de jobs et au moins une durée par job (format: 35 ou 35; 43.4; 33.5)."
+            )
+        
+        # Lire les noms des machines depuis les en-têtes (ligne 5, colonnes D-M)
+        stage_names = []
+        for j in range(3, 13):  # colonnes D à M (index 3-12)
+            try:
+                header = df.iloc[4, j]  # ligne 5 (index 4)
+                if pd.notna(header) and str(header).strip():
+                    stage_names.append(str(header).strip())
+                else:
+                    stage_names.append(f"Étape {j-2}")
+            except:
+                stage_names.append(f"Étape {j-2}")
+        
+        # Déterminer le nombre d'étapes réellement utilisées
+        max_stage_count = len(jobs_data[0]) if jobs_data else 0
+        for job in jobs_data:
+            max_stage_count = max(max_stage_count, len(job))
+        
+        # Ajuster les noms d'étapes et machines_per_stage
+        stage_names = stage_names[:max_stage_count]
+        machines_per_stage = machines_per_stage[:max_stage_count]
+        
+        # Générer les priorités des machines (ordre d'apparition)
+        machine_priorities = {}
+        for job in jobs_data:
+            for stage in job:
+                for alt_index, (machine_id, duration) in enumerate(stage):
+                    if machine_id not in machine_priorities:
+                        machine_priorities[machine_id] = alt_index + 1
+        
+        return {
+            "jobs_data": jobs_data,
+            "due_dates": due_dates,
+            "job_names": job_names,
+            "stage_names": stage_names,
+            "machines_per_stage": machines_per_stage,
+            "machine_priorities": machine_priorities,
+            "unite": unite
+        }
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel FlowshopMM: {str(e)}")
+
+def export_flowshop_mm_data_to_excel(
+    jobs_data: List[List[List[List[float]]]],  # Format FlowshopMM: job -> stage -> alternatives -> [machine_id, duration]
+    due_dates: List[float], 
+    job_names: List[str], 
+    stage_names: List[str],
+    machines_per_stage: List[int],
+    unite: str = "heures"
+) -> bytes:
+    """
+    Exporte les données FlowshopMM vers un fichier Excel avec le format séparé par points-virgules
+    
+    Args:
+        jobs_data: Données des jobs au format FlowshopMM
+        due_dates: Dates d'échéance des jobs
+        job_names: Noms des jobs
+        stage_names: Noms des étapes
+        machines_per_stage: Nombre de machines par étape
+        unite: Unité de temps
+    
+    Returns:
+        bytes: Contenu du fichier Excel
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Données FlowshopMM"
+    
+    # Styles
+    header_font = Font(bold=True, size=12)
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    cell_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Titre principal
+    ws['C3'] = "Données d'ordonnancement Flowshop Machines Multiples"
+    ws['C3'].font = Font(bold=True, size=14)
+    ws.merge_cells('C3:M3')
+    
+    # En-têtes des colonnes
+    ws['C5'] = "Job"
+    ws['C5'].font = header_font
+    ws['C5'].fill = header_fill
+    ws['C5'].alignment = cell_alignment
+    
+    # Noms des étapes (colonnes D-M) - TOUJOURS 10 colonnes fixes
+    for i in range(10):  # Toujours 10 étapes (colonnes D à M)
+        col_idx = 4 + i  # Colonne D, E, F, G, H, I, J, K, L, M
+        if i < len(stage_names):
+            stage_name = stage_names[i]
+        else:
+            stage_name = f"Étape {i + 1}"
+        
+        cell = ws.cell(row=5, column=col_idx, value=stage_name)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = cell_alignment
+    
+    # Colonne date due - TOUJOURS en colonne N (14)
+    due_date_col = 14  # Colonne N fixe
+    ws.cell(row=5, column=due_date_col, value="Date due").font = header_font
+    ws.cell(row=5, column=due_date_col).fill = header_fill
+    ws.cell(row=5, column=due_date_col).alignment = cell_alignment
+    
+    # Remplir les données des jobs
+    for job_idx, (job_name, job_stages, due_date) in enumerate(zip(job_names, jobs_data, due_dates)):
+        row = 6 + job_idx
+        
+        # Nom du job
+        ws.cell(row=row, column=3, value=job_name).alignment = cell_alignment
+        
+        # Remplir les cellules des étapes avec le format séparé par points-virgules
+        for stage_idx, stage_alternatives in enumerate(job_stages):
+            if stage_idx < 10:  # Maximum 10 étapes (colonnes D à M)
+                col_idx = 4 + stage_idx  # Colonne D, E, F, G, H, I, J, K, L, M
+                
+                # Extraire seulement les durées et les joindre avec des points-virgules
+                durations = [str(alt[1]) for alt in stage_alternatives]  # alt[1] = duration
+                cell_value = "; ".join(durations)
+                
+                ws.cell(row=row, column=col_idx, value=cell_value).alignment = cell_alignment
+        
+        # Date due
+        ws.cell(row=row, column=due_date_col, value=due_date).alignment = cell_alignment
+    
+    # Unité de temps
+    ws['C20'] = unite[0].lower()  # j, h, ou m
+    ws['C20'].font = Font(italic=True)
+    ws['A20'] = "Unité:"
+    ws['A20'].font = Font(italic=True)
+    
+    # Instructions
+    ws['C22'] = "Format des cellules: une ou plusieurs durées séparées par des points-virgules"
+    ws['C22'].font = Font(italic=True, size=10)
+    ws['C23'] = "Exemple: 35 (une machine) ou 35; 43.4; 33.5 (plusieurs machines)"
+    ws['C23'].font = Font(italic=True, size=10)
+    
+    # Ajuster la largeur des colonnes
+    for col in range(3, 15):
+        ws.column_dimensions[chr(64 + col)].width = 15
+    
+    # Sauvegarder
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.getvalue()
+
 def export_manual_data_to_excel(
     jobs_data: List[List[float]], 
     due_dates: List[float], 
