@@ -2346,6 +2346,14 @@ class ExportDataRequest(BaseModel):
     machine_names: List[str]
     unite: str = "heures"
 
+class FlowshopMMExportDataRequest(BaseModel):
+    jobs_data: List[List[List[List[float]]]]  # Job -> Stage -> Alternatives -> [machine_id, duration]
+    due_dates: List[float]
+    job_names: List[str]
+    stage_names: List[str]
+    machines_per_stage: List[int]
+    unite: str = "heures"
+
 @app.post("/spt/export-excel")
 def export_spt_data_to_excel(request: ExportDataRequest):
     """Export des données SPT saisies manuellement vers Excel"""
@@ -2485,33 +2493,15 @@ def export_smith_data_to_excel(request: ExportDataRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/flowshop/machines_multiples/export-excel")
-def export_flowshop_mm_data_to_excel(request: ExportDataRequest):
+def export_flowshop_mm_data_to_excel(request: FlowshopMMExportDataRequest):
     """Export des données FlowshopMM saisies manuellement vers Excel"""
     try:
-        # Convertir les données du format standard vers le format FlowshopMM
-        # Le format standard envoie jobs_data comme List[List[float]] (durées simples)
-        # Il faut le convertir en format FlowshopMM List[List[List[List[float]]]]
-        
-        # Créer un format FlowshopMM basique (1 machine par étape)
-        flowshop_mm_jobs_data = []
-        stage_names = request.machine_names
-        machines_per_stage = [1] * len(request.machine_names)  # 1 machine par étape par défaut
-        
-        for job_durations in request.jobs_data:
-            job_stages = []
-            for stage_idx, duration in enumerate(job_durations):
-                # Chaque étape a une seule alternative avec une machine
-                machine_id = (stage_idx + 1) * 10 + 1  # 11, 21, 31, etc.
-                stage_alternatives = [[machine_id, float(duration)]]
-                job_stages.append(stage_alternatives)
-            flowshop_mm_jobs_data.append(job_stages)
-        
         excel_content = excel_import.export_flowshop_mm_data_to_excel(
-            flowshop_mm_jobs_data,
+            request.jobs_data,
             request.due_dates,
             request.job_names,
-            stage_names,
-            machines_per_stage,
+            request.stage_names,
+            request.machines_per_stage,
             request.unite
         )
         
