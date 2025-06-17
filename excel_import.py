@@ -716,16 +716,21 @@ def export_jobshop_data_to_excel(
     ws['C5'].fill = header_fill
     ws['C5'].alignment = cell_alignment
     
-    # Noms des machines (colonnes D-M)
-    for i, machine_name in enumerate(machine_names[:10]):  # Maximum 10 machines
-        col_idx = 4 + i  # Colonne D, E, F, etc.
+    # Noms des machines (colonnes D-M) - TOUJOURS 10 colonnes fixes
+    for i in range(10):  # Toujours 10 machines (colonnes D à M)
+        col_idx = 4 + i  # Colonne D, E, F, G, H, I, J, K, L, M
+        if i < len(machine_names):
+            machine_name = machine_names[i]
+        else:
+            machine_name = f"Machine {i}"
+        
         cell = ws.cell(row=5, column=col_idx, value=machine_name)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = cell_alignment
     
-    # Colonne date due
-    due_date_col = min(14, 4 + len(machine_names))  # Colonne N ou après la dernière machine
+    # Colonne date due - TOUJOURS en colonne N (14)
+    due_date_col = 14  # Colonne N fixe
     ws.cell(row=5, column=due_date_col, value="Date due").font = header_font
     ws.cell(row=5, column=due_date_col).fill = header_fill
     ws.cell(row=5, column=due_date_col).alignment = cell_alignment
@@ -754,10 +759,10 @@ def export_jobshop_data_to_excel(
                 tasks_by_machine[machine_id] = []
             tasks_by_machine[machine_id].append((sequence, duration))
         
-        # Remplir les cellules des machines avec le format (séquence, temps)
+        # Remplir les cellules des machines avec le format séquence, temps
         for machine_id, tasks in tasks_by_machine.items():
-            if machine_id < len(machine_names):
-                col_idx = 4 + machine_id  # Colonne D, E, F, etc.
+            if machine_id < 10:  # Maximum 10 machines (colonnes D à M)
+                col_idx = 4 + machine_id  # Colonne D, E, F, G, H, I, J, K, L, M
                 
                 # Si plusieurs tâches sur la même machine, prendre la première
                 if tasks:
