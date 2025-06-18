@@ -1082,5 +1082,6 @@ def solve_mixed_assembly_line_plus_plus(data):
             task_entry.append([predecessors, model["time"]])
         formatted_tasks.append(tuple(task_entry))
     
-    results = mixed_assembly_line_scheduling_plus_plus(models, formatted_tasks, cycle_time, optimize_balance, allow_station_reduction)
+    # Appel de la nouvelle fonction simplifiée
+    results = solve_mixed_assembly_line_equilibrage_plus_plus(tasks_data, models, cycle_time, optimize_balance, allow_station_reduction)
     return results 
