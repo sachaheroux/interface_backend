@@ -780,7 +780,6 @@ def solve_mixed_assembly_line_equilibrage_plus_plus(tasks_data, models, cycle_ti
 
         print(f"=== ALGORITHME ÉQUILIBRAGE ++ SIMPLIFIÉ ===")
         print(f"Optimisation activée : {optimize_balance}")
-        print(f"Réduction de stations : {allow_station_reduction}")
         print(f"Temps de cycle : {cycle_time}")
 
         # Préparation des données
@@ -882,61 +881,20 @@ def solve_mixed_assembly_line_equilibrage_plus_plus(tasks_data, models, cycle_ti
             print("Optimisation désactivée, retour du résultat de l'étape 1")
             return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
 
-        # ÉTAPE 2 : Optimisation de l'équilibrage
+        # ÉTAPE 2 : Optimisation de l'équilibrage avec nombre de stations fixe
         print(f"\n=== ÉTAPE 2 : Optimisation de l'équilibrage ===")
+        print(f"Optimisation avec {min_stations_needed} stations...")
         
-        if allow_station_reduction:
-            # Mode réduction : tester différents nombres de stations
-            print("Mode réduction de stations activé")
-            
-            best_solution = None
-            best_gap = float('inf')
-            best_num_stations = min_stations_needed
-            
-            # Tester de min_stations_needed jusqu'à 1 station
-            for num_stations in range(min_stations_needed, 0, -1):
-                print(f"  Test avec {num_stations} stations...")
-                stations_test = list(range(1, num_stations + 1))
-                
-                solution = _solve_for_stations(tasks, stations_test, predecessors, weighted_processing_times, cycle_time)
-                
-                if solution:
-                    gap = solution['gap']
-                    print(f"    Solution trouvée : écart = {gap:.2f}%")
-                    
-                    # Choisir la solution avec le plus petit écart
-                    # En cas d'égalité, préférer moins de stations
-                    if gap < best_gap or (gap == best_gap and num_stations < best_num_stations):
-                        best_solution = solution
-                        best_gap = gap
-                        best_num_stations = num_stations
-                        print(f"    ✅ Nouvelle meilleure solution")
-                    else:
-                        print(f"    Écart {gap:.2f}% ≥ meilleur écart {best_gap:.2f}%")
-                else:
-                    print(f"    ❌ Pas de solution faisable")
-            
-            if best_solution:
-                print(f"\nMeilleure solution : {best_num_stations} stations, écart = {best_gap:.2f}%")
-                return _format_results_optimized(best_solution['assignment'], best_num_stations, models, tasks_data, cycle_time, weighted_processing_times, K_min, best_gap, allow_station_reduction)
-            else:
-                print("Aucune solution optimisée trouvée, retour de l'étape 1")
-                return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
+        stations_step2 = list(range(1, min_stations_needed + 1))
+        solution = _solve_for_stations(tasks, stations_step2, predecessors, weighted_processing_times, cycle_time)
         
+        if solution:
+            gap = solution['gap']
+            print(f"Solution optimisée : écart = {gap:.2f}%")
+            return _format_results_optimized(solution['assignment'], min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min, gap, False)
         else:
-            # Mode standard : optimiser avec le nombre de stations fixe
-            stations_step2 = list(range(1, min_stations_needed + 1))
-            print(f"Optimisation avec {min_stations_needed} stations...")
-            
-            solution = _solve_for_stations(tasks, stations_step2, predecessors, weighted_processing_times, cycle_time)
-            
-            if solution:
-                gap = solution['gap']
-                print(f"Solution optimisée : écart = {gap:.2f}%")
-                return _format_results_optimized(solution['assignment'], min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min, gap, allow_station_reduction)
-            else:
-                print("Optimisation échouée, retour de l'étape 1")
-                return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
+            print("Optimisation échouée, retour de l'étape 1")
+            return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
 
     except Exception as e:
         print(f"Erreur dans l'algorithme : {str(e)}")
