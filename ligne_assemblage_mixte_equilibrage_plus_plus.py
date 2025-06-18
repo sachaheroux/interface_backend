@@ -111,9 +111,12 @@ def mixed_assembly_line_scheduling_plus_plus(models, tasks_data, cycle_time, opt
             prob2 = LpProblem("MixedAssemblyLineScheduling_Step2", LpMinimize)
             y2 = LpVariable.dicts("Station_Step2", [(i,j) for i in tasks for j in stations_step2], 0, 1, LpBinary)
             
-            # Objectif : minimiser l'utilisation maximale pour équilibrer
+            # Variables pour l'écart min-max
             max_util = LpVariable("MaxUtil", 0, 1, LpContinuous)
-            prob2 += max_util, "MinimizeMaxUtilization"
+            min_util = LpVariable("MinUtil", 0, 1, LpContinuous)
+            
+            # Objectif : minimiser l'écart entre utilisation max et min
+            prob2 += max_util - min_util, "MinimizeUtilizationGap"
 
             # Contraintes - Étape 2
             for i in tasks:
@@ -122,8 +125,11 @@ def mixed_assembly_line_scheduling_plus_plus(models, tasks_data, cycle_time, opt
             for j in stations_step2:
                 # Contrainte de capacité normale
                 prob2 += lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) <= cycle_time, f"Cycle_time_constraint_step2_{j}"
-                # Contrainte pour l'utilisation maximale
-                prob2 += lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) <= max_util * cycle_time, f"MaxUtil_{j}"
+                
+                # Contraintes pour l'utilisation maximale et minimale
+                station_util = lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) / cycle_time
+                prob2 += station_util <= max_util, f"MaxUtil_{j}"
+                prob2 += station_util >= min_util, f"MinUtil_{j}"
 
             # Contraintes de précédence
             counter = 1
