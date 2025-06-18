@@ -1067,20 +1067,22 @@ def solve_mixed_assembly_line_plus_plus(data):
     """
     Interface principale pour résoudre le problème d'équilibrage de ligne mixte ++
     """
-    models = tuple(data["models"])
+    models_demands = data["models"]  # Liste des demandes [4, 1] par exemple
     tasks_data = data["tasks_data"]
     cycle_time = data["cycle_time"]
-    optimize_balance = data.get("optimize_balance", True)  # Par défaut, optimiser l'équilibrage
-    allow_station_reduction = data.get("allow_station_reduction", False)  # Nouveau paramètre
+    optimize_balance = data.get("optimize_balance", True)
+    allow_station_reduction = data.get("allow_station_reduction", False)
     
-    # Conversion du format d'entrée
-    formatted_tasks = []
-    for task in tasks_data:
-        task_entry = [task["id"]]
-        for model in task["models"]:
-            predecessors = model["predecessors"] if model["predecessors"] else None
-            task_entry.append([predecessors, model["time"]])
-        formatted_tasks.append(tuple(task_entry))
+    # Conversion du format des modèles pour la nouvelle fonction
+    models = []
+    for i, demand in enumerate(models_demands):
+        models.append({
+            'model': f'Produit_{i+1}',
+            'demand': demand
+        })
+    
+    print(f"Modèles convertis : {models}")
+    print(f"Données tâches : {tasks_data}")
     
     # Appel de la nouvelle fonction simplifiée
     results = solve_mixed_assembly_line_equilibrage_plus_plus(tasks_data, models, cycle_time, optimize_balance, allow_station_reduction)
