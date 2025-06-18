@@ -2114,13 +2114,44 @@ def export_ligne_assemblage_mixte_equilibrage_to_excel(
                 
                 # Prédécesseurs pour ce produit
                 pred_val = ""
-                if j < len(models) and models[j] and "predecessors" in models[j]:
-                    predecessors = models[j]["predecessors"]
-                    if predecessors is not None:
+                if j < len(models) and models[j]:
+                    # Chercher les prédécesseurs dans le modèle
+                    predecessors = None
+                    if "predecessors" in models[j]:
+                        predecessors = models[j]["predecessors"]
+                    elif "predecessor" in models[j]:
+                        predecessors = models[j]["predecessor"]
+                    
+                    if predecessors is not None and str(predecessors).strip() != "" and str(predecessors).lower() != "null":
                         if isinstance(predecessors, list):
-                            pred_val = ",".join(map(str, predecessors))
+                            # Filtrer les valeurs vides et convertir en entiers
+                            pred_list = []
+                            for p in predecessors:
+                                if p is not None and str(p).strip() != "" and str(p).lower() != "null":
+                                    try:
+                                        pred_list.append(int(float(p)))
+                                    except:
+                                        pass
+                            if pred_list:
+                                pred_val = ",".join(map(str, pred_list))
+                        elif isinstance(predecessors, str):
+                            # Chaîne de caractères avec virgules possibles
+                            if predecessors.strip():
+                                pred_parts = [p.strip() for p in predecessors.split(',') if p.strip()]
+                                pred_list = []
+                                for p in pred_parts:
+                                    try:
+                                        pred_list.append(int(float(p)))
+                                    except:
+                                        pass
+                                if pred_list:
+                                    pred_val = ",".join(map(str, pred_list))
                         else:
-                            pred_val = str(predecessors)
+                            # Valeur unique (nombre)
+                            try:
+                                pred_val = str(int(float(predecessors)))
+                            except:
+                                pred_val = str(predecessors)
                 
                 ws.cell(row=row, column=col2, value=pred_val).border = border
         
