@@ -5,8 +5,9 @@ import matplotlib
 matplotlib.use('Agg')
 import io
 import base64
+import math
 
-def mixed_assembly_line_scheduling_plus_plus(models, tasks_data, cycle_time, optimize_balance=True, allow_station_reduction=False):
+def mixed_assembly_line_scheduling_plus_plus_deprecated(models, tasks_data, cycle_time, optimize_balance=True, allow_station_reduction=False):
     """
     Algorithme d'équilibrage de ligne d'assemblage mixte ++
     Approche bi-objectif :
@@ -764,6 +765,345 @@ def generate_equilibrage_plus_plus_chart(results):
     plt.close()
     
     return image_base64
+
+def solve_mixed_assembly_line_equilibrage_plus_plus(tasks_data, models, cycle_time, optimize_balance=True, allow_station_reduction=False):
+    """
+    Résout le problème d'équilibrage de ligne d'assemblage mixte avec optimisation bi-objectif simplifiée.
+    
+    1. Premier objectif : Minimiser le nombre de stations
+    2. Deuxième objectif : Minimiser l'écart entre les taux d'utilisation max et min
+    """
+    try:
+        # Validation des données d'entrée
+        if not tasks_data or not models or cycle_time <= 0:
+            raise ValueError("Données d'entrée invalides")
+
+        print(f"=== ALGORITHME ÉQUILIBRAGE ++ SIMPLIFIÉ ===")
+        print(f"Optimisation activée : {optimize_balance}")
+        print(f"Réduction de stations : {allow_station_reduction}")
+        print(f"Temps de cycle : {cycle_time}")
+
+        # Préparation des données
+        tasks = [task['id'] for task in tasks_data]
+        predecessors = {}
+        
+        for task in tasks_data:
+            task_id = task['id']
+            pred_list = []
+            if task.get('predecessors'):
+                if isinstance(task['predecessors'], list):
+                    pred_list = [p for p in task['predecessors'] if p is not None]
+                elif task['predecessors'] is not None:
+                    pred_list = [task['predecessors']]
+            predecessors[task_id] = pred_list if pred_list else [None]
+
+        # Calcul des temps de traitement pondérés
+        weighted_processing_times = {}
+        total_demand = sum(model['demand'] for model in models)
+        
+        for task in tasks_data:
+            task_id = task['id']
+            weighted_time = 0
+            for model in models:
+                model_time = next((t['time'] for t in task['times'] if t['model'] == model['model']), 0)
+                weight = model['demand'] / total_demand
+                weighted_time += model_time * weight
+            weighted_processing_times[task_id] = weighted_time
+
+        print(f"Temps pondérés calculés : {weighted_processing_times}")
+
+        # ÉTAPE 1 : Trouver le nombre minimum de stations
+        print("\n=== ÉTAPE 1 : Nombre minimum de stations ===")
+        
+        # Estimation du nombre minimum de stations nécessaires
+        total_work = sum(weighted_processing_times.values())
+        K_min = max(1, math.ceil(total_work / cycle_time))
+        print(f"Estimation K_min : {K_min} stations")
+
+        # Recherche du nombre minimum réel par programmation linéaire
+        min_stations_needed = None
+        step1_assignment = None
+        
+        for K in range(K_min, len(tasks) + 1):
+            print(f"Test avec {K} stations...")
+            stations = list(range(1, K + 1))
+            
+            prob1 = LpProblem("MixedAssemblyLineScheduling_Step1", LpMinimize)
+            y1 = LpVariable.dicts("Station_Step1", [(i,j) for i in tasks for j in stations], 0, 1, LpBinary)
+            
+            # Fonction objective - Étape 1 : faisabilité
+            prob1 += 0, "Feasibility"
+
+            # Contraintes - Étape 1
+            for i in tasks:
+                prob1 += lpSum([y1[(i,j)] for j in stations]) == 1, f"Each_task_assigned_once_step1_{i}"
+
+            for j in stations:
+                prob1 += lpSum([weighted_processing_times[i]*y1[(i,j)] for i in tasks]) <= cycle_time, f"Cycle_time_constraint_step1_{j}"
+
+            counter = 1
+            for i in tasks:
+                has_precedence = any(pred is not None for pred in predecessors[i])
+                if has_precedence:
+                    all_predecessors = set()
+                    for pred in predecessors[i]:
+                        if pred is not None:
+                            if isinstance(pred, list):
+                                all_predecessors.update(pred)
+                            else:
+                                all_predecessors.add(pred)
+                    
+                    for p in all_predecessors:
+                        prob1 += lpSum([j*y1[(i,j)] for j in stations]) >= lpSum([j*y1[(p,j)] for j in stations]), f"Precedence_constraint_step1_{counter}"
+                        counter += 1
+
+            prob1.solve(PULP_CBC_CMD(msg=0, timeLimit=60))
+            
+            if LpStatus[prob1.status] == "Optimal":
+                print(f"✅ Solution trouvée avec {K} stations")
+                min_stations_needed = K
+                
+                step1_assignment = {}
+                for i in tasks:
+                    for j in stations:
+                        if y1[(i,j)].varValue and y1[(i,j)].varValue > 0:
+                            step1_assignment[i] = j
+                break
+            else:
+                print(f"❌ Pas de solution avec {K} stations")
+
+        if min_stations_needed is None:
+            raise ValueError("Aucune solution faisable trouvée")
+
+        print(f"Nombre minimum de stations nécessaires : {min_stations_needed}")
+
+        # Si l'optimisation n'est pas activée, retourner le résultat de l'étape 1
+        if not optimize_balance:
+            print("Optimisation désactivée, retour du résultat de l'étape 1")
+            return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
+
+        # ÉTAPE 2 : Optimisation de l'équilibrage
+        print(f"\n=== ÉTAPE 2 : Optimisation de l'équilibrage ===")
+        
+        if allow_station_reduction:
+            # Mode réduction : tester différents nombres de stations
+            print("Mode réduction de stations activé")
+            
+            best_solution = None
+            best_gap = float('inf')
+            best_num_stations = min_stations_needed
+            
+            # Tester de min_stations_needed jusqu'à 1 station
+            for num_stations in range(min_stations_needed, 0, -1):
+                print(f"  Test avec {num_stations} stations...")
+                stations_test = list(range(1, num_stations + 1))
+                
+                solution = _solve_for_stations(tasks, stations_test, predecessors, weighted_processing_times, cycle_time)
+                
+                if solution:
+                    gap = solution['gap']
+                    print(f"    Solution trouvée : écart = {gap:.2f}%")
+                    
+                    # Choisir la solution avec le plus petit écart
+                    # En cas d'égalité, préférer moins de stations
+                    if gap < best_gap or (gap == best_gap and num_stations < best_num_stations):
+                        best_solution = solution
+                        best_gap = gap
+                        best_num_stations = num_stations
+                        print(f"    ✅ Nouvelle meilleure solution")
+                    else:
+                        print(f"    Écart {gap:.2f}% ≥ meilleur écart {best_gap:.2f}%")
+                else:
+                    print(f"    ❌ Pas de solution faisable")
+            
+            if best_solution:
+                print(f"\nMeilleure solution : {best_num_stations} stations, écart = {best_gap:.2f}%")
+                return _format_results_optimized(best_solution['assignment'], best_num_stations, models, tasks_data, cycle_time, weighted_processing_times, K_min, best_gap, allow_station_reduction)
+            else:
+                print("Aucune solution optimisée trouvée, retour de l'étape 1")
+                return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
+        
+        else:
+            # Mode standard : optimiser avec le nombre de stations fixe
+            stations_step2 = list(range(1, min_stations_needed + 1))
+            print(f"Optimisation avec {min_stations_needed} stations...")
+            
+            solution = _solve_for_stations(tasks, stations_step2, predecessors, weighted_processing_times, cycle_time)
+            
+            if solution:
+                gap = solution['gap']
+                print(f"Solution optimisée : écart = {gap:.2f}%")
+                return _format_results_optimized(solution['assignment'], min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min, gap, allow_station_reduction)
+            else:
+                print("Optimisation échouée, retour de l'étape 1")
+                return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
+
+    except Exception as e:
+        print(f"Erreur dans l'algorithme : {str(e)}")
+        raise ValueError(f"Erreur lors de la résolution : {str(e)}")
+
+def _solve_for_stations(tasks, stations, predecessors, weighted_processing_times, cycle_time):
+    """
+    Résout le problème d'optimisation pour un nombre donné de stations.
+    Retourne la solution ou None si pas faisable.
+    """
+    try:
+        prob = LpProblem("OptimizeBalance", LpMinimize)
+        y = LpVariable.dicts("Station", [(i,j) for i in tasks for j in stations], 0, 1, LpBinary)
+        
+        # Objectif : minimiser l'utilisation maximale (pour équilibrer)
+        max_util = LpVariable("MaxUtil", 0, 1, LpContinuous)
+        prob += max_util, "MinimizeMaxUtilization"
+        
+        # Contraintes
+        for i in tasks:
+            prob += lpSum([y[(i,j)] for j in stations]) == 1, f"Task_assigned_{i}"
+        
+        for j in stations:
+            # Contrainte de capacité
+            prob += lpSum([weighted_processing_times[i]*y[(i,j)] for i in tasks]) <= cycle_time, f"Capacity_{j}"
+            # Contrainte pour l'utilisation maximale
+            prob += lpSum([weighted_processing_times[i]*y[(i,j)] for i in tasks]) <= max_util * cycle_time, f"MaxUtil_{j}"
+        
+        # Contraintes de précédence
+        counter = 1
+        for i in tasks:
+            has_precedence = any(pred is not None for pred in predecessors[i])
+            if has_precedence:
+                all_predecessors = set()
+                for pred in predecessors[i]:
+                    if pred is not None:
+                        if isinstance(pred, list):
+                            all_predecessors.update(pred)
+                        else:
+                            all_predecessors.add(pred)
+                
+                for p in all_predecessors:
+                    prob += lpSum([j*y[(i,j)] for j in stations]) >= lpSum([j*y[(p,j)] for j in stations]), f"Prec_{counter}"
+                    counter += 1
+        
+        prob.solve(PULP_CBC_CMD(msg=0, timeLimit=60))
+        
+        if LpStatus[prob.status] == "Optimal":
+            assignment = {}
+            for i in tasks:
+                for j in stations:
+                    if y[(i,j)].varValue and y[(i,j)].varValue > 0:
+                        assignment[i] = j
+            
+            # Calcul de l'écart d'utilisation
+            station_utilizations = []
+            for j in stations:
+                tasks_in_station = [i for i in tasks if assignment.get(i) == j]
+                if tasks_in_station:
+                    station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
+                    utilization = (station_load / cycle_time) * 100
+                    station_utilizations.append(utilization)
+            
+            if station_utilizations:
+                gap = max(station_utilizations) - min(station_utilizations)
+                return {
+                    'assignment': assignment,
+                    'gap': gap,
+                    'utilizations': station_utilizations
+                }
+        
+        return None
+        
+    except Exception as e:
+        print(f"Erreur dans _solve_for_stations : {str(e)}")
+        return None
+
+def _format_results_optimized(assignment, num_stations, models, tasks_data, cycle_time, weighted_processing_times, K_min, utilization_gap, allow_station_reduction):
+    """
+    Formate les résultats de l'étape 2 (optimisation de l'équilibrage)
+    """
+    # Calcul des métriques par station
+    station_assignments = {j: [] for j in range(1, num_stations + 1)}
+    station_loads = {}
+    station_utilizations = {}
+    
+    for task, station in assignment.items():
+        station_assignments[station].append(task)
+    
+    total_utilization = 0
+    max_utilization = 0
+    min_utilization = 100
+    
+    for j in range(1, num_stations + 1):
+        tasks_in_station = station_assignments[j]
+        if tasks_in_station:
+            station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
+            # Capacité normale de la station
+            station_utilization = (station_load / cycle_time) * 100
+            
+            station_loads[j] = station_load
+            station_utilizations[j] = station_utilization
+            
+            total_utilization += station_utilization
+            max_utilization = max(max_utilization, station_utilization)
+            if station_utilization > 0:
+                min_utilization = min(min_utilization, station_utilization)
+    
+    avg_utilization = total_utilization / num_stations if num_stations > 0 else 0
+    utilization_variance = float(np.var(list(station_utilizations.values()))) if station_utilizations else 0
+    efficiency = (K_min / num_stations) * 100 if num_stations > 0 else 0
+    
+    # Préparation des résultats détaillés par station
+    stations_details = []
+    for j in sorted(station_assignments.keys()):
+        if station_assignments[j]:  # Seulement les stations utilisées
+            stations_details.append({
+                "station": int(j),
+                "tasks": station_assignments[j],
+                "load": round(float(station_loads[j]), 2),
+                "utilization": round(float(station_utilizations[j]), 2),
+                "doubled_capacity": False  # Plus de doublement de capacité
+            })
+    
+    method_description = "Programmation Linéaire ++ (Bi-objectif simplifié)"
+    if allow_station_reduction:
+        method_description += " avec réduction de stations"
+    
+    info_text = f"✅ Optimisation bi-objectif simplifiée ({len(tasks_data)} tâches, {num_stations} stations"
+    if allow_station_reduction:
+        info_text += ", réduction de stations activée"
+    info_text += ")"
+    
+    # Calcul du temps total pondéré
+    total_weighted_time = 0
+    for task in tasks_data:
+        task_id = task['id']
+        weighted_time = 0
+        total_demand = sum(model['demand'] for model in models)
+        for model in models:
+            model_time = next((t['time'] for t in task['times'] if t['model'] == model['model']), 0)
+            weight = model['demand'] / total_demand
+            weighted_time += model_time * weight
+        total_weighted_time += weighted_time
+    
+    return {
+        "status": "Optimal",
+        "optimal": True,
+        "method": method_description,
+        "info": info_text,
+        "optimization_step": "Étape 2 : Minimisation de l'écart d'utilisation",
+        "balance_optimized": True,
+        "station_reduction_used": allow_station_reduction,
+        "stations_used": int(num_stations),
+        "theoretical_minimum": round(float(K_min), 2),
+        "efficiency": round(float(efficiency), 2),
+        "average_utilization": round(float(avg_utilization), 2),
+        "max_utilization": round(float(max_utilization), 2),
+        "min_utilization": round(float(min_utilization), 2) if min_utilization < 100 else 0,
+        "utilization_gap": round(float(utilization_gap), 2),
+        "utilization_variance": round(float(utilization_variance), 2),
+        "cycle_time": float(cycle_time),
+        "total_weighted_time": round(float(total_weighted_time), 2),
+        "station_assignments": stations_details,
+        "doubled_stations": [],  # Plus de stations doublées
+        "models_demand": list(models)
+    }
 
 def solve_mixed_assembly_line_plus_plus(data):
     """
