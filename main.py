@@ -2583,3 +2583,31 @@ def export_flowshop_mm_data_to_excel(request: FlowshopMMExportDataRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# ===== IMPORT/EXPORT EXCEL POUR PRÉCÉDENCES =====
+
+class PrecedenceExportDataRequest(BaseModel):
+    tasks_data: List[dict]  # Format: [{"task_id": 1, "name": "Tâche 1", "duration": 20, "predecessors": None}]
+    unite: str = "minutes"
+    format_type: str = "precedence"
+
+@app.post("/ligne_assemblage/precedence/export-excel")
+def export_precedence_data_to_excel(request: PrecedenceExportDataRequest):
+    try:
+        # Utiliser la fonction d'export spécialisée pour précédences (sans cycle_time)
+        return excel_import.export_precedence_to_excel(
+            request.tasks_data,
+            request.unite,
+            "Précédences"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'export: {str(e)}")
+
+@app.post("/ligne_assemblage/precedence/import-excel")
+async def import_precedence_excel(file: UploadFile = File(...), format_type: str = "precedence"):
+    try:
+        # Lire le fichier Excel et parser selon le format précédences
+        result = await excel_import.parse_precedence_excel(file)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Erreur lors de l'import: {str(e)}")
+

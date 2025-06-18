@@ -1397,24 +1397,36 @@ async def parse_ligne_assemblage_excel(file) -> Dict:
             
             task_id += 1
         
-        # Chercher le temps de cycle et l'unité dans le fichier
-        # Chercher dans différentes cellules possibles
-        for row in range(df.shape[0]):
-            for col in range(df.shape[1]):
-                cell_value = df.iloc[row, col]
-                if pd.notna(cell_value):
-                    cell_str = str(cell_value).lower().strip()
-                    if "cycle" in cell_str or "temps de cycle" in cell_str:
-                        # Chercher la valeur dans les cellules adjacentes
-                        for offset in [1, 2, 3]:
-                            if col + offset < df.shape[1]:
-                                try:
-                                    cycle_val = df.iloc[row, col + offset]
-                                    if pd.notna(cycle_val):
-                                        cycle_time = float(cycle_val)
-                                        break
-                                except:
-                                    pass
+        # Chercher le temps de cycle et l'unité aux positions spécifiques
+        # H6 = "Unité de temps", H7 = valeur unité
+        # H9 = "Temps de cycle", H10 = valeur temps de cycle
+        try:
+            # Vérifier H6 pour "Unité de temps"
+            if df.shape[0] > 5 and df.shape[1] > 7:  # H6 = ligne 6, colonne H (index 7)
+                h6_value = df.iloc[5, 7]  # H6
+                if pd.notna(h6_value) and "unité" in str(h6_value).lower():
+                    # Lire la valeur de l'unité en H7
+                    h7_value = df.iloc[6, 7]  # H7
+                    if pd.notna(h7_value):
+                        unite_val = str(h7_value).strip().lower()
+                        if unite_val in ['j', 'h', 'm']:
+                            if unite_val == 'j':
+                                unite = "jours"
+                            elif unite_val == 'h':
+                                unite = "heures"
+                            elif unite_val == 'm':
+                                unite = "minutes"
+            
+            # Vérifier H9 pour "Temps de cycle"
+            if df.shape[0] > 9 and df.shape[1] > 7:  # H9 = ligne 9, colonne H (index 7)
+                h9_value = df.iloc[8, 7]  # H9
+                if pd.notna(h9_value) and "cycle" in str(h9_value).lower():
+                    # Lire la valeur du temps de cycle en H10
+                    h10_value = df.iloc[9, 7]  # H10
+                    if pd.notna(h10_value):
+                        cycle_time = float(h10_value)
+        except:
+            pass  # Garder les valeurs par défaut si erreur
         
         # Si il y a des erreurs, les signaler
         if errors:
@@ -1552,7 +1564,15 @@ def export_ligne_assemblage_to_excel(
         ws['H6'].font = Font(bold=True)
         
         # H7: Valeur de l'unité (j/h/m)
-        ws['H7'] = unite
+        # Convertir l'unité au format court
+        unite_short = unite
+        if unite.lower() == "minutes":
+            unite_short = "m"
+        elif unite.lower() == "heures":
+            unite_short = "h"
+        elif unite.lower() == "jours":
+            unite_short = "j"
+        ws['H7'] = unite_short
         
         # H9: "Temps de cycle"
         ws['H9'] = "Temps de cycle"
@@ -1579,15 +1599,15 @@ def export_ligne_assemblage_to_excel(
             "- Colonne C: Noms des tâches",
             "- Colonne D: Durées des tâches",
             "- Colonne E: Prédécesseurs (vide si aucun, sinon IDs séparés par virgules)",
+            "- Colonne H6: Unité de temps, H7: Valeur unité (j/h/m)",
+            "- Colonne H9: Temps de cycle, H10: Valeur temps de cycle",
             "",
             "Format d'import attendu :",
             "- Headers en ligne 6 (C6=Tâche, D6=Durée, E6=Prédécesseur)",
             "- Données à partir de la ligne 7",
+            "- Paramètres en colonne H aux lignes spécifiées",
             "",
-            "Paramètres actuels :",
-            f"- Temps de cycle: {cycle_time} {unite}",
-            f"- Nombre de tâches: {len(tasks_data)}",
-            f"- Algorithme: {algorithm_name}",
+            f"Nombre de tâches exportées: {len(tasks_data)}",
             "",
             "Ce fichier peut être modifié et réimporté dans l'application."
         ]
@@ -1604,6 +1624,326 @@ def export_ligne_assemblage_to_excel(
             io.BytesIO(output.getvalue()),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=Export_{algorithm_name}_LigneAssemblage.xlsx"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'export: {str(e)}")
+
+async def parse_precedence_excel(file) -> Dict:
+    """
+    Parse un fichier Excel pour l'algorithme de précédences.
+    Format attendu identique à ligne d'assemblage mais sans cycle_time obligatoire.
+    - C6: "Tâche" (header)
+    - C7+: Noms des tâches
+    - D6: "Durée" (header)
+    - D7+: Durées des tâches
+    - E6: "Prédécesseur" (header)  
+    - E7+: Prédécesseurs des tâches
+    - H6: "Unité de temps", H7: Valeur unité (j/h/m) - optionnel
+    - H9: "Temps de cycle", H10: Valeur (ignoré pour précédences)
+    
+    Args:
+        file: Fichier Excel uploadé
+        
+    Returns:
+        Dict contenant les données formatées pour l'API précédences
+    """
+    try:
+        # Lire le contenu du fichier
+        file_content = await file.read()
+        
+        # Lire le fichier Excel sans en-tête automatique
+        excel_file = io.BytesIO(file_content)
+        df = pd.read_excel(excel_file, header=None)
+        
+        # Vérifier la structure minimale
+        if df.shape[0] < 10 or df.shape[1] < 6:
+            raise ValueError("Structure de fichier incorrecte")
+        
+        # Vérifier les headers en ligne 6 (index 5)
+        task_header = df.iloc[5, 2]  # C6
+        duration_header = df.iloc[5, 3]  # D6
+        predecessor_header = df.iloc[5, 4]  # E6
+        
+        if (pd.isna(task_header) or str(task_header).strip().lower() != "tâche" and 
+            str(task_header).strip().lower() != "tache"):
+            raise ValueError("Format non reconnu - cellule C6 doit contenir 'Tâche'")
+        
+        # Extraire les données des tâches
+        tasks_data = []
+        unite = "minutes"  # valeur par défaut
+        errors = []
+        
+        # Parcourir les lignes à partir de la ligne 7 (index 6)
+        task_id = 1
+        for i in range(6, min(df.shape[0], 50)):  # Limiter à 50 tâches max
+            row_num = i + 1  # Numéro de ligne Excel (1-indexé)
+            
+            # Nom de la tâche (colonne C)
+            task_name = df.iloc[i, 2]
+            if pd.isna(task_name) or not str(task_name).strip():
+                continue  # Ligne vide, on passe
+            
+            task_name = str(task_name).strip()
+            
+            # Durée de la tâche (colonne D)
+            duration = df.iloc[i, 3]
+            if pd.isna(duration) or not str(duration).strip():
+                errors.append(f"Tâche '{task_name}' (ligne {row_num}): durée manquante")
+                continue
+            
+            try:
+                duration_val = float(duration)
+                if duration_val <= 0:
+                    errors.append(f"Tâche '{task_name}' (ligne {row_num}): durée doit être positive")
+                    continue
+            except (ValueError, TypeError):
+                errors.append(f"Tâche '{task_name}' (ligne {row_num}): durée invalide '{duration}'")
+                continue
+            
+            # Prédécesseurs (colonne E)
+            predecessors = df.iloc[i, 4]
+            predecessors_val = None
+            
+            if pd.notna(predecessors) and str(predecessors).strip():
+                predecessors_str = str(predecessors).strip()
+                if predecessors_str and predecessors_str != "0":
+                    # Parser les prédécesseurs (format: "1,2,3" ou "1")
+                    try:
+                        pred_list = [int(p.strip()) for p in predecessors_str.split(',') if p.strip()]
+                        if len(pred_list) == 1:
+                            predecessors_val = pred_list[0]
+                        elif len(pred_list) > 1:
+                            predecessors_val = pred_list
+                    except (ValueError, TypeError):
+                        errors.append(f"Tâche '{task_name}' (ligne {row_num}): prédécesseurs invalides '{predecessors_str}'")
+            
+            # Ajouter la tâche
+            tasks_data.append({
+                "id": task_id,
+                "name": task_name,
+                "predecessors": predecessors_val,
+                "duration": duration_val
+            })
+            
+            task_id += 1
+        
+        # Chercher l'unité aux positions spécifiques (optionnel pour précédences)
+        try:
+            # Vérifier H6 pour "Unité de temps"
+            if df.shape[0] > 5 and df.shape[1] > 7:  # H6 = ligne 6, colonne H (index 7)
+                h6_value = df.iloc[5, 7]  # H6
+                if pd.notna(h6_value) and "unité" in str(h6_value).lower():
+                    # Lire la valeur de l'unité en H7
+                    h7_value = df.iloc[6, 7]  # H7
+                    if pd.notna(h7_value):
+                        unite_val = str(h7_value).strip().lower()
+                        if unite_val in ['j', 'h', 'm']:
+                            if unite_val == 'j':
+                                unite = "jours"
+                            elif unite_val == 'h':
+                                unite = "heures"
+                            elif unite_val == 'm':
+                                unite = "minutes"
+        except:
+            pass  # Garder la valeur par défaut si erreur
+        
+        # Si il y a des erreurs, les signaler
+        if errors:
+            error_msg = "Erreurs dans le fichier Excel:\n" + "\n".join(f"• {err}" for err in errors[:10])
+            if len(errors) > 10:
+                error_msg += f"\n... et {len(errors) - 10} autres erreurs"
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        if not tasks_data:
+            raise HTTPException(
+                status_code=400,
+                detail="Aucune tâche valide trouvée. Vérifiez que vous avez rempli les noms, durées et prédécesseurs."
+            )
+        
+        return {
+            "tasks_data": tasks_data,
+            "unite": unite
+        }
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel: {str(e)}")
+
+
+def export_precedence_to_excel(
+    tasks_data: List[dict],
+    unite: str = "minutes",
+    algorithm_name: str = "Précédences"
+) -> bytes:
+    """
+    Exporte les données de précédences vers Excel.
+    Format de sortie identique à ligne d'assemblage mais avec cycle_time par défaut (non utilisé).
+    - B7+: ID des tâches (1, 2, 3...)
+    - C6: "Tâche", C7+: Noms des tâches
+    - D6: "Durée", D7+: Durées des tâches
+    - E6: "Prédécesseur", E7+: Prédécesseurs des tâches
+    - H6: "Unité de temps", H7: Valeur unité (j/h/m)
+    - H9: "Temps de cycle", H10: 70 (valeur par défaut, non utilisée)
+    
+    Args:
+        tasks_data: Liste des tâches avec task_id, name, duration, predecessors
+        unite: Unité de temps
+        algorithm_name: Nom de l'algorithme
+        
+    Returns:
+        bytes: Contenu du fichier Excel
+    """
+    try:
+        from fastapi.responses import StreamingResponse
+        
+        # Validation des données d'entrée
+        if not tasks_data:
+            raise ValueError("Aucune donnée de tâche fournie")
+        
+        # Créer un BytesIO pour le fichier Excel
+        output = io.BytesIO()
+        
+        # Créer un workbook avec openpyxl
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"Export_{algorithm_name}"
+        
+        # Styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Headers en ligne 6
+        # B6: "ID" (pour aider l'utilisateur)
+        ws['B6'] = "ID"
+        ws['B6'].font = header_font
+        ws['B6'].fill = header_fill
+        ws['B6'].alignment = Alignment(horizontal="center")
+        ws['B6'].border = border
+        
+        # C6: "Tâche"
+        ws['C6'] = "Tâche"
+        ws['C6'].font = header_font
+        ws['C6'].fill = header_fill
+        ws['C6'].alignment = Alignment(horizontal="center")
+        ws['C6'].border = border
+        
+        # D6: "Durée"
+        ws['D6'] = "Durée"
+        ws['D6'].font = header_font
+        ws['D6'].fill = header_fill
+        ws['D6'].alignment = Alignment(horizontal="center")
+        ws['D6'].border = border
+        
+        # E6: "Prédécesseur"
+        ws['E6'] = "Prédécesseur"
+        ws['E6'].font = header_font
+        ws['E6'].fill = header_fill
+        ws['E6'].alignment = Alignment(horizontal="center")
+        ws['E6'].border = border
+        
+        # Données à partir de la ligne 7
+        for i, task in enumerate(tasks_data):
+            row = 7 + i
+            
+            # B7+: ID des tâches (task_id ou index+1)
+            task_id = task.get("task_id", i + 1)
+            ws.cell(row=row, column=2, value=task_id).border = border
+            
+            # C7+: Noms des tâches
+            ws.cell(row=row, column=3, value=task.get("name", f"Tâche {task_id}")).border = border
+            
+            # D7+: Durées des tâches
+            ws.cell(row=row, column=4, value=task.get("duration", 0)).border = border
+            
+            # E7+: Prédécesseurs des tâches
+            predecessors = task.get("predecessors")
+            if predecessors is None:
+                pred_str = ""
+            elif isinstance(predecessors, list):
+                pred_str = ",".join(map(str, predecessors))
+            else:
+                pred_str = str(predecessors)
+            
+            ws.cell(row=row, column=5, value=pred_str).border = border
+        
+        # Informations supplémentaires - Placer dans la colonne H aux positions demandées
+        # H6: "Unité de temps"
+        ws['H6'] = "Unité de temps"
+        ws['H6'].font = Font(bold=True)
+        
+        # H7: Valeur de l'unité (j/h/m)
+        # Convertir l'unité au format court
+        unite_short = unite
+        if unite.lower() == "minutes":
+            unite_short = "m"
+        elif unite.lower() == "heures":
+            unite_short = "h"
+        elif unite.lower() == "jours":
+            unite_short = "j"
+        ws['H7'] = unite_short
+        
+        # H9: "Temps de cycle" (pour compatibilité, mais non utilisé par précédences)
+        ws['H9'] = "Temps de cycle"
+        ws['H9'].font = Font(bold=True)
+        
+        # H10: Valeur du temps de cycle par défaut (non utilisée par précédences)
+        ws['H10'] = 70
+        
+        # Ajuster la largeur des colonnes
+        ws.column_dimensions['B'].width = 8
+        ws.column_dimensions['C'].width = 15
+        ws.column_dimensions['D'].width = 12
+        ws.column_dimensions['E'].width = 15
+        
+        # Ajouter un onglet d'instructions
+        instructions_ws = wb.create_sheet("Instructions")
+        instructions_ws['A1'] = f"EXPORT {algorithm_name.upper()} - DIAGRAMME DE PRÉCÉDENCE"
+        instructions_ws['A1'].font = Font(bold=True, size=14)
+        
+        instructions = [
+            "",
+            "Structure du fichier :",
+            "- Colonne B: ID des tâches (pour référence, non importé)",
+            "- Colonne C: Noms des tâches",
+            "- Colonne D: Durées des tâches",
+            "- Colonne E: Prédécesseurs (vide si aucun, sinon IDs séparés par virgules)",
+            "- Colonne H6: Unité de temps, H7: Valeur unité (j/h/m)",
+            "- Colonne H9: Temps de cycle (présent pour compatibilité, non utilisé)",
+            "",
+            "Format d'import attendu :",
+            "- Headers en ligne 6 (C6=Tâche, D6=Durée, E6=Prédécesseur)",
+            "- Données à partir de la ligne 7",
+            "- Paramètres en colonne H aux lignes spécifiées",
+            "",
+            f"Nombre de tâches exportées: {len(tasks_data)}",
+            "",
+            "Note: L'algorithme Précédences ne nécessite pas de temps de cycle.",
+            "Ce fichier peut être modifié et réimporté dans l'application."
+        ]
+        
+        for i, instruction in enumerate(instructions):
+            instructions_ws.cell(row=2+i, column=1, value=instruction)
+        
+        # Sauvegarder dans le BytesIO
+        wb.save(output)
+        output.seek(0)
+        
+        # Retourner une réponse de streaming
+        return StreamingResponse(
+            io.BytesIO(output.getvalue()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=Export_{algorithm_name}_Precedences.xlsx"}
         )
         
     except Exception as e:
