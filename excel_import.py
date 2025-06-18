@@ -2446,4 +2446,418 @@ async def parse_ligne_assemblage_mixte_equilibrage_excel(file) -> Dict:
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel: {str(e)}")
+
+
+def export_ligne_assemblage_mixte_goulot_to_excel(
+    products_data: List[dict],
+    tasks_data: List[dict],
+    s1: float,
+    s2: float,
+    unite: str = "minutes"
+) -> bytes:
+    """
+    Exporte les données de goulot mixte vers Excel selon le format spécifique.
+    
+    Structure:
+    - B6: "ID", B7+: 1, 2, 3... (IDs séquentiels)
+    - C4: "Demande"
+    - C6: "Tâche", C7+: Noms des tâches
+    - D4-H4: Demandes des produits
+    - D5-H5: Noms des produits
+    - D6-H6: "Durée"
+    - D7+: Durées des tâches pour chaque produit
+    - J6: "S1", J7: valeur S1
+    - J9: "S2", J10: valeur S2
+    - J12: "Unité de temps", J13: j/h/m
+    
+    Args:
+        products_data: Liste des produits avec noms et demandes
+        tasks_data: Liste des tâches avec noms et durées par produit
+        s1: Valeur S1
+        s2: Valeur S2
+        unite: Unité de temps
+        
+    Returns:
+        bytes: Contenu du fichier Excel
+    """
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Goulot Mixte"
+        
+        # Styles
+        header_font = Font(bold=True, size=12)
+        header_fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
+        demand_font = Font(bold=True, size=11, color="0066CC")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Limiter à 5 produits maximum (colonnes D à H)
+        products_data = products_data[:5]
+        product_columns = [3, 4, 5, 6, 7]  # colonnes D, E, F, G, H (index 3, 4, 5, 6, 7)
+        
+        # C4: "Demande"
+        ws['C4'] = "Demande"
+        ws['C4'].font = demand_font
+        ws['C4'].alignment = Alignment(horizontal="center")
+        
+        # Demandes des produits (ligne 4)
+        for i, product in enumerate(products_data):
+            if i >= len(product_columns):
+                break
+            col = product_columns[i]
+            demand_cell = ws.cell(row=4, column=col, value=product.get("demand", 0))
+            demand_cell.font = demand_font
+            demand_cell.alignment = Alignment(horizontal="center")
+            demand_cell.border = border
+        
+        # Noms des produits (ligne 5)
+        for i, product in enumerate(products_data):
+            if i >= len(product_columns):
+                break
+            col = product_columns[i]
+            name_cell = ws.cell(row=5, column=col, value=product.get("name", f"Produit {i+1}"))
+            name_cell.font = header_font
+            name_cell.fill = header_fill
+            name_cell.alignment = Alignment(horizontal="center")
+            name_cell.border = border
+        
+        # Headers ligne 6
+        # B6: "ID"
+        ws['B6'] = "ID"
+        ws['B6'].font = header_font
+        ws['B6'].fill = header_fill
+        ws['B6'].alignment = Alignment(horizontal="center")
+        ws['B6'].border = border
+        
+        # C6: "Tâche"
+        ws['C6'] = "Tâche"
+        ws['C6'].font = header_font
+        ws['C6'].fill = header_fill
+        ws['C6'].alignment = Alignment(horizontal="center")
+        ws['C6'].border = border
+        
+        # D6-H6: "Durée"
+        for i in range(len(products_data)):
+            if i >= len(product_columns):
+                break
+            col = product_columns[i]
+            duree_cell = ws.cell(row=6, column=col, value="Durée")
+            duree_cell.font = header_font
+            duree_cell.fill = header_fill
+            duree_cell.alignment = Alignment(horizontal="center")
+            duree_cell.border = border
+        
+        # Données des tâches à partir de la ligne 7
+        for i, task in enumerate(tasks_data):
+            row = 7 + i
+            
+            # B7+: ID des tâches (1, 2, 3...)
+            task_id = task.get("task_id", task.get("id", i + 1))
+            ws.cell(row=row, column=2, value=task_id).border = border
+            
+            # C7+: Noms des tâches
+            ws.cell(row=row, column=3, value=task.get("name", f"Tâche {task_id}")).border = border
+            
+            # Durées pour chaque produit (D7+, E7+, F7+, G7+, H7+)
+            times = task.get("times", [])
+            models = task.get("models", [])
+            
+            for j in range(len(products_data)):
+                if j >= len(product_columns):
+                    break
+                col = product_columns[j]
+                
+                # Durée pour ce produit
+                time_val = 0
+                if j < len(times):
+                    time_val = times[j]
+                elif j < len(models) and models[j] and "time" in models[j]:
+                    time_val = models[j]["time"]
+                
+                ws.cell(row=row, column=col, value=time_val).border = border
+        
+        # Paramètres S1 et S2 en colonne J
+        # J6: "S1"
+        ws['J6'] = "S1"
+        ws['J6'].font = Font(bold=True)
+        
+        # J7: valeur S1
+        ws['J7'] = s1
+        
+        # J9: "S2"
+        ws['J9'] = "S2"
+        ws['J9'].font = Font(bold=True)
+        
+        # J10: valeur S2
+        ws['J10'] = s2
+        
+        # J12: "Unité de temps"
+        ws['J12'] = "Unité de temps"
+        ws['J12'].font = Font(bold=True)
+        
+        # J13: Valeur de l'unité (j/h/m)
+        unite_short = unite
+        if unite.lower() == "minutes":
+            unite_short = "m"
+        elif unite.lower() == "heures":
+            unite_short = "h"
+        elif unite.lower() == "jours":
+            unite_short = "j"
+        ws['J13'] = unite_short
+        
+        # Ajuster la largeur des colonnes
+        ws.column_dimensions['B'].width = 8
+        ws.column_dimensions['C'].width = 15
+        for col_letter in ['D', 'E', 'F', 'G', 'H']:
+            ws.column_dimensions[col_letter].width = 12
+        ws.column_dimensions['J'].width = 18
+        
+        # Ajouter un onglet d'instructions
+        instructions_ws = wb.create_sheet("Instructions")
+        instructions_ws['A1'] = "EXPORT GOULOT MIXTE"
+        instructions_ws['A1'].font = Font(bold=True, size=14)
+        
+        instructions = [
+            "",
+            "Structure du fichier :",
+            "- Colonne B: ID des tâches (repère visuel)",
+            "- Colonne C: Noms des tâches",
+            "- Ligne 4: Demandes des produits",
+            "- Ligne 5: Noms des produits",
+            "- Ligne 6: Headers 'Durée' pour chaque produit",
+            "- À partir ligne 7: Données des tâches",
+            "- Colonne J6: S1, J7: Valeur S1",
+            "- Colonne J9: S2, J10: Valeur S2",
+            "- Colonne J12: Unité de temps, J13: Valeur unité (j/h/m)",
+            "",
+            "Organisation par produit :",
+            "- Produit 1: colonne D (Durée)",
+            "- Produit 2: colonne E (Durée)",
+            "- Produit 3: colonne F (Durée)",
+            "- Produit 4: colonne G (Durée)",
+            "- Produit 5: colonne H (Durée)",
+            "",
+            f"Nombre de produits exportés: {len(products_data)}",
+            f"Nombre de tâches exportées: {len(tasks_data)}",
+            f"S1: {s1}",
+            f"S2: {s2}",
+            "",
+            "Ce fichier peut être modifié et réimporté dans l'application."
+        ]
+        
+        for i, instruction in enumerate(instructions):
+            instructions_ws.cell(row=2+i, column=1, value=instruction)
+        
+        # Sauvegarder dans BytesIO
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        return output.getvalue()
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'export: {str(e)}")
+
+
+async def parse_ligne_assemblage_mixte_goulot_excel(file) -> Dict:
+    """
+    Parse un fichier Excel pour le goulot mixte selon le format spécifique.
+    
+    Structure attendue:
+    - B6: "ID" (ignoré)
+    - C4: "Demande"
+    - C6: "Tâche", C7+: Noms des tâches
+    - D4-H4: Demandes des produits
+    - D5-H5: Noms des produits
+    - D6-H6: "Durée"
+    - D7+: Durées des tâches pour chaque produit
+    - J6: "S1", J7: valeur S1
+    - J9: "S2", J10: valeur S2
+    - J12: "Unité de temps", J13: j/h/m
+    
+    Args:
+        file: Fichier Excel uploadé
+        
+    Returns:
+        Dict contenant les données formatées pour l'API
+    """
+    try:
+        print(f"Début du parsing pour goulot mixte")
+        print(f"Type de fichier reçu: {type(file)}")
+        
+        # Lire le fichier Excel - s'assurer qu'on lit le contenu correctement
+        if hasattr(file, 'file'):
+            # FastAPI UploadFile
+            file_content = await file.read()
+            df = pd.read_excel(io.BytesIO(file_content), header=None)
+        else:
+            # Fichier direct
+            df = pd.read_excel(file, header=None)
+        print(f"Fichier Excel lu, dimensions: {df.shape}")
+        
+        # Vérifier la structure minimale
+        if df.shape[0] < 10 or df.shape[1] < 10:
+            print(f"Structure insuffisante: {df.shape[0]} lignes, {df.shape[1]} colonnes")
+            raise ValueError(f"Structure de fichier incorrecte - taille insuffisante: {df.shape[0]} lignes x {df.shape[1]} colonnes (minimum requis: 10x10)")
+        
+        # Extraire l'unité de temps (J13)
+        unite = "minutes"  # valeur par défaut
+        try:
+            unite_cell = df.iloc[12, 9]  # J13 (ligne 13, colonne J)
+            if pd.notna(unite_cell):
+                unite_str = str(unite_cell).lower().strip()
+                if unite_str == 'j':
+                    unite = "jours"
+                elif unite_str == 'h':
+                    unite = "heures"
+                elif unite_str == 'm':
+                    unite = "minutes"
+        except:
+            pass
+        
+        # Extraire S1 (J7)
+        s1 = 1.0  # valeur par défaut
+        try:
+            s1_cell = df.iloc[6, 9]  # J7 (ligne 7, colonne J)
+            if pd.notna(s1_cell):
+                s1 = float(s1_cell)
+        except:
+            pass
+        
+        # Extraire S2 (J10)
+        s2 = 1.0  # valeur par défaut
+        try:
+            s2_cell = df.iloc[9, 9]  # J10 (ligne 10, colonne J)
+            if pd.notna(s2_cell):
+                s2 = float(s2_cell)
+        except:
+            pass
+        
+        # Extraire les données des produits
+        products_data = []
+        product_columns = [3, 4, 5, 6, 7]  # colonnes D, E, F, G, H (index 3, 4, 5, 6, 7)
+        
+        for i, col in enumerate(product_columns):
+            try:
+                # Nom du produit (ligne 5)
+                name_cell = df.iloc[4, col]  # ligne 5 (index 4)
+                if pd.isna(name_cell) or not str(name_cell).strip():
+                    break  # Plus de produits
+                
+                product_name = str(name_cell).strip()
+                
+                # Demande du produit (ligne 4)
+                demand_cell = df.iloc[3, col]  # ligne 4 (index 3)
+                demand = 1  # valeur par défaut
+                if pd.notna(demand_cell):
+                    try:
+                        demand = int(float(demand_cell))
+                        if demand <= 0:
+                            demand = 1
+                    except:
+                        demand = 1
+                
+                products_data.append({
+                    "product_id": i + 1,
+                    "name": product_name,
+                    "demand": demand
+                })
+                
+            except Exception as e:
+                print(f"Erreur lors de la lecture du produit {i+1}: {e}")
+                break
+        
+        if not products_data:
+            raise ValueError("Aucun produit valide trouvé")
+        
+        # Extraire les données des tâches
+        tasks_data = []
+        errors = []
+        
+        # Parcourir les lignes à partir de la ligne 7 (index 6)
+        for i in range(6, min(df.shape[0], 50)):  # Limite à 50 tâches max
+            row_num = i + 1  # Numéro de ligne Excel (1-indexé)
+            
+            # Nom de la tâche (colonne C)
+            task_name = df.iloc[i, 2]  # colonne C (index 2)
+            if pd.isna(task_name) or not str(task_name).strip():
+                continue  # Ligne vide, on passe
+            
+            task_name = str(task_name).strip()
+            
+            # ID de la tâche (colonne B, ou index+1 si absent)
+            task_id = df.iloc[i, 1]  # colonne B (index 1)
+            if pd.isna(task_id):
+                task_id = i - 5  # Calculer l'ID basé sur la position (ligne 7 = tâche 1)
+            else:
+                try:
+                    task_id = int(float(task_id))
+                except:
+                    task_id = i - 5
+            
+            # Extraire les durées pour chaque produit
+            times = []
+            
+            for j, col in enumerate(product_columns):
+                if j >= len(products_data):
+                    break
+                
+                # Durée pour ce produit
+                time_val = 0
+                try:
+                    time_cell = df.iloc[i, col]
+                    if pd.notna(time_cell):
+                        time_val = float(time_cell)
+                        if time_val < 0:
+                            errors.append(f"Tâche '{task_name}', produit {j+1}: durée négative ({time_val})")
+                            time_val = 0
+                except:
+                    time_val = 0
+                
+                times.append(time_val)
+            
+            # Ajouter la tâche
+            tasks_data.append({
+                "task_id": task_id,
+                "id": task_id,
+                "name": task_name,
+                "times": times
+            })
+        
+        # Vérifier qu'on a des données valides
+        if not tasks_data:
+            raise ValueError("Aucune tâche valide trouvée")
+        
+        # Signaler les erreurs s'il y en a
+        if errors:
+            error_msg = "Avertissements lors de l'import:\n" + "\n".join(f"• {err}" for err in errors[:10])
+            if len(errors) > 10:
+                error_msg += f"\n... et {len(errors) - 10} autres avertissements"
+            print(f"Import warnings: {error_msg}")
+        
+        return {
+            "products_data": products_data,
+            "tasks_data": tasks_data,
+            "s1": s1,
+            "s2": s2,
+            "unite": unite
+        }
+        
+    except Exception as e:
+        print(f"Erreur dans parse_ligne_assemblage_mixte_goulot_excel: {str(e)}")
+        print(f"Type d'erreur: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel: {str(e)}")
  

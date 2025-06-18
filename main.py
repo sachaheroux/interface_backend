@@ -2597,6 +2597,14 @@ class LigneAssemblageMixteEquilibrageExportDataRequest(BaseModel):
     unite: str = "minutes"
     format_type: str = "ligne_assemblage_mixte_equilibrage"
 
+class LigneAssemblageMixteGoulotExportDataRequest(BaseModel):
+    products_data: List[dict]  # Format: [{"product_id": 1, "name": "Produit 1", "demand": 4}]
+    tasks_data: List[dict]     # Format: [{"task_id": 1, "name": "Tâche 1", "times": [3, 4]}]
+    s1: float
+    s2: float
+    unite: str = "minutes"
+    format_type: str = "ligne_assemblage_mixte_goulot"
+
 @app.post("/ligne_assemblage/precedence/export-excel")
 def export_precedence_data_to_excel(request: PrecedenceExportDataRequest):
     try:
@@ -2639,6 +2647,32 @@ def export_ligne_assemblage_mixte_equilibrage_data_to_excel(request: LigneAssemb
 async def import_ligne_assemblage_mixte_equilibrage_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage_mixte_equilibrage"):
     try:
         data = await excel_import.parse_ligne_assemblage_mixte_equilibrage_excel(file)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/goulot/export-excel")
+def export_ligne_assemblage_mixte_goulot_data_to_excel(request: LigneAssemblageMixteGoulotExportDataRequest):
+    try:
+        buffer = excel_import.export_ligne_assemblage_mixte_goulot_to_excel(
+            request.products_data, 
+            request.tasks_data, 
+            request.s1,
+            request.s2,
+            request.unite
+        )
+        return StreamingResponse(
+            io.BytesIO(buffer), 
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=Export_Goulot_Mixte_Donnees_Manuelles.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/goulot/import-excel")
+async def import_ligne_assemblage_mixte_goulot_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage_mixte_goulot"):
+    try:
+        data = await excel_import.parse_ligne_assemblage_mixte_goulot_excel(file)
         return data
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
