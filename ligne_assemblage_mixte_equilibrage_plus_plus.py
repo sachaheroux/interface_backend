@@ -7,12 +7,12 @@ import io
 import base64
 import math
 
-def mixed_assembly_line_scheduling_plus_plus_deprecated(models, tasks_data, cycle_time, optimize_balance=True, allow_station_reduction=False):
+def mixed_assembly_line_scheduling_plus_plus(models, tasks_data, cycle_time, optimize_balance=True, allow_station_reduction=False):
     """
     Algorithme d'équilibrage de ligne d'assemblage mixte ++
     Approche bi-objectif :
     1. Minimiser le nombre de stations
-    2. Minimiser l'écart des taux d'utilisation (max - min) avec possibilité de doubler la capacité
+    2. Minimiser l'écart des taux d'utilisation (max - min)
     """
     # Calcul du temps total pondéré par les modèles
     T = sum([sum(np.multiply(models, [task[i][1] for i in range(1, len(task))])) for task in tasks_data])
@@ -104,96 +104,28 @@ def mixed_assembly_line_scheduling_plus_plus_deprecated(models, tasks_data, cycl
             print("Mode réduction de stations activé - test de toutes les combinaisons...")
             return _optimize_with_station_reduction(tasks, predecessors, weighted_processing_times, cycle_time, min_stations_needed, models, tasks_data, K_min)
         else:
-            # Mode standard : nombre de stations fixe
-            # Limitation aux stations nécessaires
+            # Mode standard : optimisation simple avec nombre de stations fixe
             stations_step2 = list(range(1, min_stations_needed + 1))
             
-            print(f"Test de 2 approches avec {min_stations_needed} stations...")
-            
-            # APPROCHE 1 : Sans doublement de capacité
-            print("  Approche 1 : Sans doublement de capacité...")
-            prob_no_double = LpProblem("NoDoubling", LpMinimize)
-            y_no_double = LpVariable.dicts("Station_NoDouble", [(i,j) for i in tasks for j in stations_step2], 0, 1, LpBinary)
-            
-            # Objectif : minimiser le nombre de stations utilisées
-            prob_no_double += lpSum([j * y_no_double[(i,j)] for i in tasks for j in stations_step2]), "MinStations"
-            
-            # Contraintes sans doublement
-            for i in tasks:
-                prob_no_double += lpSum([y_no_double[(i,j)] for j in stations_step2]) == 1, f"Task_assigned_{i}"
-            
-            for j in stations_step2:
-                prob_no_double += lpSum([weighted_processing_times[i]*y_no_double[(i,j)] for i in tasks]) <= cycle_time, f"Capacity_{j}"
-            
-            # Contraintes de précédence
-            counter = 1
-            for i in tasks:
-                has_precedence = any(pred is not None for pred in predecessors[i])
-                if has_precedence:
-                    all_predecessors = set()
-                    for pred in predecessors[i]:
-                        if pred is not None:
-                            if isinstance(pred, list):
-                                all_predecessors.update(pred)
-                            else:
-                                all_predecessors.add(pred)
-                    
-                    for p in all_predecessors:
-                        prob_no_double += lpSum([j*y_no_double[(i,j)] for j in stations_step2]) >= lpSum([j*y_no_double[(p,j)] for j in stations_step2]), f"Prec_no_double_{counter}"
-                        counter += 1
-            
-            prob_no_double.solve(PULP_CBC_CMD(msg=0, timeLimit=60))
-            
-            solution_no_double = None
-            if LpStatus[prob_no_double.status] == "Optimal":
-                assignment_no_double = {}
-                for i in tasks:
-                    for j in stations_step2:
-                        if y_no_double[(i,j)].varValue and y_no_double[(i,j)].varValue > 0:
-                            assignment_no_double[i] = j
-                
-                # Calcul de l'écart sans doublement
-                station_utilizations = []
-                for j in stations_step2:
-                    tasks_in_station = [i for i in tasks if assignment_no_double.get(i) == j]
-                    if tasks_in_station:
-                        station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
-                        utilization = (station_load / cycle_time) * 100
-                        station_utilizations.append(utilization)
-                
-                if station_utilizations:
-                    gap_no_double = max(station_utilizations) - min(station_utilizations)
-                    solution_no_double = {
-                        'assignment': assignment_no_double,
-                        'doubled_stations': [],
-                        'gap': gap_no_double,
-                        'utilizations': station_utilizations
-                    }
-                    print(f"    Solution sans doublement : écart = {gap_no_double:.2f}%")
-                else:
-                    print("    Pas de solution sans doublement")
-            else:
-                print("    Pas de solution faisable sans doublement")
-            
-            # APPROCHE 2 : Avec doublement de capacité
-            print("  Approche 2 : Avec doublement de capacité...")
+            print(f"Optimisation avec {min_stations_needed} stations...")
             prob2 = LpProblem("MixedAssemblyLineScheduling_Step2", LpMinimize)
             y2 = LpVariable.dicts("Station_Step2", [(i,j) for i in tasks for j in stations_step2], 0, 1, LpBinary)
-            double = LpVariable.dicts("Double", stations_step2, 0, 1, LpBinary)
             
-            # Fonction objective - Étape 2 : minimiser le nombre de stations doublées
-            prob2 += lpSum([double[j] for j in stations_step2]), "MinimizeDoubledStations"
+            # Objectif : minimiser l'utilisation maximale pour équilibrer
+            max_util = LpVariable("MaxUtil", 0, 1, LpContinuous)
+            prob2 += max_util, "MinimizeMaxUtilization"
 
             # Contraintes - Étape 2
-            prob2 += lpSum([j * y2[(i,j)] for i in tasks for j in stations_step2]) <= min_stations_needed, "UseMinStations"
-            
             for i in tasks:
                 prob2 += lpSum([y2[(i,j)] for j in stations_step2]) == 1, f"Each_task_assigned_once_step2_{i}"
 
             for j in stations_step2:
-                station_capacity = cycle_time * (1 + double[j])
-                prob2 += lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) <= station_capacity, f"Cycle_time_constraint_step2_{j}"
+                # Contrainte de capacité normale
+                prob2 += lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) <= cycle_time, f"Cycle_time_constraint_step2_{j}"
+                # Contrainte pour l'utilisation maximale
+                prob2 += lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) <= max_util * cycle_time, f"MaxUtil_{j}"
 
+            # Contraintes de précédence
             counter = 1
             for i in tasks:
                 has_precedence = any(pred is not None for pred in predecessors[i])
@@ -212,66 +144,34 @@ def mixed_assembly_line_scheduling_plus_plus_deprecated(models, tasks_data, cycl
 
             prob2.solve(PULP_CBC_CMD(msg=0, timeLimit=120))
             
-            solution_with_double = None
-            if LpStatus[prob2.status] == "Optimal":
-                step2_assignment = {}
-                doubled_stations = []
-                
-                for i in tasks:
-                    for j in stations_step2:
-                        if y2[(i,j)].varValue and y2[(i,j)].varValue > 0:
-                            step2_assignment[i] = j
-                
-                for j in stations_step2:
-                    if double[j].varValue and double[j].varValue > 0.5:
-                        doubled_stations.append(j)
-                
-                # Calcul de l'écart avec doublement
-                station_utilizations = []
-                for j in stations_step2:
-                    tasks_in_station = [i for i in tasks if step2_assignment.get(i) == j]
-                    if tasks_in_station:
-                        station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
-                        station_capacity = cycle_time * (2 if j in doubled_stations else 1)
-                        utilization = (station_load / station_capacity) * 100
-                        station_utilizations.append(utilization)
-                
-                if station_utilizations:
-                    gap_with_double = max(station_utilizations) - min(station_utilizations)
-                    solution_with_double = {
-                        'assignment': step2_assignment,
-                        'doubled_stations': doubled_stations,
-                        'gap': gap_with_double,
-                        'utilizations': station_utilizations
-                    }
-                    print(f"    Solution avec doublement : écart = {gap_with_double:.2f}%, stations doublées = {doubled_stations}")
-                else:
-                    print("    Pas de solution avec doublement")
-            else:
-                print("    Pas de solution faisable avec doublement")
-            
-            # COMPARAISON ET CHOIX DE LA MEILLEURE SOLUTION
-            if solution_no_double and solution_with_double:
-                if solution_with_double['gap'] < solution_no_double['gap']:
-                    print(f"  ✅ Choisir solution avec doublement (écart {solution_with_double['gap']:.2f}% < {solution_no_double['gap']:.2f}%)")
-                    chosen_solution = solution_with_double
-                else:
-                    print(f"  ✅ Choisir solution sans doublement (écart {solution_no_double['gap']:.2f}% ≤ {solution_with_double['gap']:.2f}%)")
-                    chosen_solution = solution_no_double
-            elif solution_with_double:
-                print("  ✅ Seule solution avec doublement disponible")
-                chosen_solution = solution_with_double
-            elif solution_no_double:
-                print("  ✅ Seule solution sans doublement disponible") 
-                chosen_solution = solution_no_double
-            else:
-                print("  ❌ Aucune solution trouvée, utilisation du résultat de l'étape 1")
+            if LpStatus[prob2.status] != "Optimal":
+                print(f"Étape 2 échouée : {LpStatus[prob2.status]}, utilisation du résultat de l'étape 1")
                 return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
             
-            print(f"Solution finale : écart = {chosen_solution['gap']:.2f}%")
-            print(f"Stations doublées : {chosen_solution['doubled_stations']}")
+            # Extraction des résultats - Étape 2
+            step2_assignment = {}
+            for i in tasks:
+                for j in stations_step2:
+                    if y2[(i,j)].varValue and y2[(i,j)].varValue > 0:
+                        step2_assignment[i] = j
             
-            return _format_results_step2(chosen_solution['assignment'], min_stations_needed, chosen_solution['doubled_stations'], models, tasks_data, cycle_time, weighted_processing_times, K_min, chosen_solution['gap'])
+            # Calcul de l'écart d'utilisation
+            station_utilizations = []
+            for j in stations_step2:
+                tasks_in_station = [i for i in tasks if step2_assignment.get(i) == j]
+                if tasks_in_station:
+                    station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
+                    utilization = (station_load / cycle_time) * 100
+                    station_utilizations.append(utilization)
+            
+            if station_utilizations:
+                utilization_gap = max(station_utilizations) - min(station_utilizations)
+            else:
+                utilization_gap = 0
+            
+            print(f"Écart d'utilisation calculé : {utilization_gap:.2f}%")
+            
+            return _format_results_step2(step2_assignment, min_stations_needed, [], models, tasks_data, cycle_time, weighted_processing_times, K_min, utilization_gap)
 
     except Exception as e:
         print(f"Erreur dans l'algorithme ++ : {str(e)}")
@@ -1067,23 +967,21 @@ def solve_mixed_assembly_line_plus_plus(data):
     """
     Interface principale pour résoudre le problème d'équilibrage de ligne mixte ++
     """
-    models_demands = data["models"]  # Liste des demandes [4, 1] par exemple
+    models = tuple(data["models"])
     tasks_data = data["tasks_data"]
     cycle_time = data["cycle_time"]
     optimize_balance = data.get("optimize_balance", True)
     allow_station_reduction = data.get("allow_station_reduction", False)
     
-    # Conversion du format des modèles pour la nouvelle fonction
-    models = []
-    for i, demand in enumerate(models_demands):
-        models.append({
-            'model': f'Produit_{i+1}',
-            'demand': demand
-        })
+    # Conversion du format d'entrée vers l'ancien format
+    formatted_tasks = []
+    for task in tasks_data:
+        task_entry = [task["id"]]
+        for model in task["models"]:
+            predecessors = model["predecessors"] if model["predecessors"] else None
+            task_entry.append([predecessors, model["time"]])
+        formatted_tasks.append(tuple(task_entry))
     
-    print(f"Modèles convertis : {models}")
-    print(f"Données tâches : {tasks_data}")
-    
-    # Appel de la nouvelle fonction simplifiée
-    results = solve_mixed_assembly_line_equilibrage_plus_plus(tasks_data, models, cycle_time, optimize_balance, allow_station_reduction)
+    # Appel de l'ancienne fonction qui fonctionne
+    results = mixed_assembly_line_scheduling_plus_plus(models, formatted_tasks, cycle_time, optimize_balance, allow_station_reduction)
     return results 
