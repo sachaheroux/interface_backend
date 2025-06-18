@@ -2248,12 +2248,23 @@ async def parse_ligne_assemblage_mixte_equilibrage_excel(file) -> Dict:
         Dict contenant les données formatées pour l'API
     """
     try:
-        # Lire le fichier Excel
-        df = pd.read_excel(file, header=None)
+        print(f"Début du parsing pour équilibrage mixte")
+        print(f"Type de fichier reçu: {type(file)}")
+        
+        # Lire le fichier Excel - s'assurer qu'on lit le contenu correctement
+        if hasattr(file, 'file'):
+            # FastAPI UploadFile
+            file_content = await file.read()
+            df = pd.read_excel(io.BytesIO(file_content), header=None)
+        else:
+            # Fichier direct
+            df = pd.read_excel(file, header=None)
+        print(f"Fichier Excel lu, dimensions: {df.shape}")
         
         # Vérifier la structure minimale
         if df.shape[0] < 10 or df.shape[1] < 16:
-            raise ValueError("Structure de fichier incorrecte - taille insuffisante")
+            print(f"Structure insuffisante: {df.shape[0]} lignes, {df.shape[1]} colonnes")
+            raise ValueError(f"Structure de fichier incorrecte - taille insuffisante: {df.shape[0]} lignes x {df.shape[1]} colonnes (minimum requis: 10x16)")
         
         # Extraire l'unité de temps (P6)
         unite = "minutes"  # valeur par défaut
@@ -2427,6 +2438,11 @@ async def parse_ligne_assemblage_mixte_equilibrage_excel(file) -> Dict:
         }
         
     except Exception as e:
+        print(f"Erreur dans parse_ligne_assemblage_mixte_equilibrage_excel: {str(e)}")
+        print(f"Type d'erreur: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=400, detail=f"Erreur lors de la lecture du fichier Excel: {str(e)}")
