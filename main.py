@@ -2590,6 +2590,13 @@ class PrecedenceExportDataRequest(BaseModel):
     unite: str = "minutes"
     format_type: str = "precedence"
 
+class LigneAssemblageMixteEquilibrageExportDataRequest(BaseModel):
+    products_data: List[dict]  # Format: [{"product_id": 1, "name": "Produit 1", "demand": 4}]
+    tasks_data: List[dict]     # Format: [{"task_id": 1, "name": "Tâche 1", "times": [3, 4], "predecessors": [null, "1"]}]
+    cycle_time: float
+    unite: str = "minutes"
+    format_type: str = "ligne_assemblage_mixte_equilibrage"
+
 @app.post("/ligne_assemblage/precedence/export-excel")
 def export_precedence_data_to_excel(request: PrecedenceExportDataRequest):
     try:
@@ -2610,4 +2617,29 @@ async def import_precedence_excel(file: UploadFile = File(...), format_type: str
         return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Erreur lors de l'import: {str(e)}")
+
+@app.post("/ligne_assemblage_mixte/equilibrage/export-excel")
+def export_ligne_assemblage_mixte_equilibrage_data_to_excel(request: LigneAssemblageMixteEquilibrageExportDataRequest):
+    try:
+        buffer = excel_import.export_ligne_assemblage_mixte_equilibrage_to_excel(
+            request.products_data, 
+            request.tasks_data, 
+            request.cycle_time, 
+            request.unite
+        )
+        return StreamingResponse(
+            io.BytesIO(buffer), 
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=Export_Equilibrage_Mixte_Donnees_Manuelles.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/equilibrage/import-excel")
+async def import_ligne_assemblage_mixte_equilibrage_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage_mixte_equilibrage"):
+    try:
+        data = await excel_import.parse_ligne_assemblage_mixte_equilibrage_excel(file)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
