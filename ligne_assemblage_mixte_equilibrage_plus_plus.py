@@ -114,81 +114,80 @@ def mixed_assembly_line_scheduling_plus_plus(models, tasks_data, cycle_time, opt
             y2 = LpVariable.dicts("Station_Step2", [(i,j) for i in tasks for j in stations_step2], 0, 1, LpBinary)
             double = LpVariable.dicts("Double", stations_step2, 0, 1, LpBinary)  # 1 si station a capacité doublée
             
-            # Variables auxiliaires pour l'écart min-max
-            max_util = LpVariable("MaxUtilization", 0, 100, LpContinuous)
-            min_util = LpVariable("MinUtilization", 0, 100, LpContinuous)
-            
-            # Fonction objective - Étape 2 : minimiser l'écart des taux d'utilisation
-            prob2 += max_util - min_util, "MinimizeUtilizationGap"
+            # Fonction objective - Étape 2 : minimiser le nombre de stations doublées
+            prob2 += lpSum([double[j] for j in stations_step2]), "MinimizeDoubledStations"
 
             # Contraintes - Étape 2
             # 1. Utiliser exactement le nombre minimum de stations trouvé à l'étape 1
             prob2 += lpSum([j * y2[(i,j)] for i in tasks for j in stations_step2]) <= min_stations_needed, "UseMinStations"
-        
-        # 2. Chaque tâche doit être assignée à exactement une station
-        for i in tasks:
-            prob2 += lpSum([y2[(i,j)] for j in stations_step2]) == 1, f"Each_task_assigned_once_step2_{i}"
-
-        # 3. Contrainte de temps de cycle pour chaque station (avec capacité possiblement doublée)
-        for j in stations_step2:
-            station_capacity = cycle_time * (1 + double[j])  # Capacité normale ou doublée
-            prob2 += lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) <= station_capacity, f"Cycle_time_constraint_step2_{j}"
-
-        # 4. Contraintes de précédence
-        counter = 1
-        for i in tasks:
-            has_precedence = any(pred is not None for pred in predecessors[i])
-            if has_precedence:
-                all_predecessors = set()
-                for pred in predecessors[i]:
-                    if pred is not None:
-                        if isinstance(pred, list):
-                            all_predecessors.update(pred)
-                        else:
-                            all_predecessors.add(pred)
-                
-                for p in all_predecessors:
-                    prob2 += lpSum([j*y2[(i,j)] for j in stations_step2]) >= lpSum([j*y2[(p,j)] for j in stations_step2]), f"Precedence_constraint_step2_{counter}"
-                    counter += 1
-
-        # 5. Contraintes pour les variables min/max d'utilisation
-        for j in stations_step2:
-            station_load = lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks])
-            station_capacity = cycle_time * (1 + double[j])
             
-            # Utilisation = (charge / capacité) * 100
-            # Pour éviter la division dans LP, on utilise : charge * 100 <= utilisation * capacité
-            prob2 += station_load * 100 <= max_util * station_capacity, f"MaxUtil_constraint_{j}"
-            prob2 += station_load * 100 >= min_util * station_capacity, f"MinUtil_constraint_{j}"
+            # 2. Chaque tâche doit être assignée à exactement une station
+            for i in tasks:
+                prob2 += lpSum([y2[(i,j)] for j in stations_step2]) == 1, f"Each_task_assigned_once_step2_{i}"
 
-        # Résolution - Étape 2
-        prob2.solve(PULP_CBC_CMD(msg=0, timeLimit=120))
-        
-        if LpStatus[prob2.status] != "Optimal":
-            print(f"Étape 2 échouée : {LpStatus[prob2.status]}, utilisation du résultat de l'étape 1")
-            return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
-        
-        # Extraction des résultats - Étape 2
-        step2_assignment = {}
-        doubled_stations = []
-        
-        for i in tasks:
+            # 3. Contrainte de temps de cycle pour chaque station (avec capacité possiblement doublée)
             for j in stations_step2:
-                if y2[(i,j)].varValue and y2[(i,j)].varValue > 0:
-                    step2_assignment[i] = j
-        
-        for j in stations_step2:
-            if double[j].varValue and double[j].varValue > 0.5:
-                doubled_stations.append(j)
-        
-        max_utilization_value = max_util.varValue if max_util.varValue else 0
-        min_utilization_value = min_util.varValue if min_util.varValue else 0
-        utilization_gap = max_utilization_value - min_utilization_value
-        
-        print(f"Écart d'utilisation optimisé : {utilization_gap:.2f}%")
-        print(f"Stations avec capacité doublée : {doubled_stations}")
-        
-        return _format_results_step2(step2_assignment, min_stations_needed, doubled_stations, models, tasks_data, cycle_time, weighted_processing_times, K_min, utilization_gap)
+                station_capacity = cycle_time * (1 + double[j])  # Capacité normale ou doublée
+                prob2 += lpSum([weighted_processing_times[i]*y2[(i,j)] for i in tasks]) <= station_capacity, f"Cycle_time_constraint_step2_{j}"
+
+            # 4. Contraintes de précédence
+            counter = 1
+            for i in tasks:
+                has_precedence = any(pred is not None for pred in predecessors[i])
+                if has_precedence:
+                    all_predecessors = set()
+                    for pred in predecessors[i]:
+                        if pred is not None:
+                            if isinstance(pred, list):
+                                all_predecessors.update(pred)
+                            else:
+                                all_predecessors.add(pred)
+                    
+                    for p in all_predecessors:
+                        prob2 += lpSum([j*y2[(i,j)] for j in stations_step2]) >= lpSum([j*y2[(p,j)] for j in stations_step2]), f"Precedence_constraint_step2_{counter}"
+                        counter += 1
+
+            # Résolution - Étape 2
+            prob2.solve(PULP_CBC_CMD(msg=0, timeLimit=120))
+            
+            if LpStatus[prob2.status] != "Optimal":
+                print(f"Étape 2 échouée : {LpStatus[prob2.status]}, utilisation du résultat de l'étape 1")
+                return _format_results_step1(step1_assignment, min_stations_needed, models, tasks_data, cycle_time, weighted_processing_times, K_min)
+            
+            # Extraction des résultats - Étape 2
+            step2_assignment = {}
+            doubled_stations = []
+            
+            for i in tasks:
+                for j in stations_step2:
+                    if y2[(i,j)].varValue and y2[(i,j)].varValue > 0:
+                        step2_assignment[i] = j
+            
+            for j in stations_step2:
+                if double[j].varValue and double[j].varValue > 0.5:
+                    doubled_stations.append(j)
+            
+            # Calcul manuel de l'écart d'utilisation
+            station_utilizations = []
+            for j in stations_step2:
+                tasks_in_station = [i for i in tasks if step2_assignment.get(i) == j]
+                if tasks_in_station:
+                    station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
+                    station_capacity = cycle_time * (2 if j in doubled_stations else 1)
+                    utilization = (station_load / station_capacity) * 100
+                    station_utilizations.append(utilization)
+            
+            if station_utilizations:
+                max_utilization_value = max(station_utilizations)
+                min_utilization_value = min(station_utilizations)
+                utilization_gap = max_utilization_value - min_utilization_value
+            else:
+                utilization_gap = 0
+            
+            print(f"Écart d'utilisation calculé : {utilization_gap:.2f}%")
+            print(f"Stations avec capacité doublée : {doubled_stations}")
+            
+            return _format_results_step2(step2_assignment, min_stations_needed, doubled_stations, models, tasks_data, cycle_time, weighted_processing_times, K_min, utilization_gap)
 
     except Exception as e:
         print(f"Erreur dans l'algorithme ++ : {str(e)}")
@@ -220,12 +219,8 @@ def _optimize_with_station_reduction(tasks, predecessors, weighted_processing_ti
             y = LpVariable.dicts("Station", [(i,j) for i in tasks for j in stations], 0, 1, LpBinary)
             double = LpVariable.dicts("Double", stations, 0, 1, LpBinary)  # 1 si station a capacité doublée
             
-            # Variables auxiliaires pour l'écart min-max
-            max_util = LpVariable("MaxUtilization", 0, 100, LpContinuous)
-            min_util = LpVariable("MinUtilization", 0, 100, LpContinuous)
-            
-            # Fonction objective : minimiser l'écart des taux d'utilisation
-            prob += max_util - min_util, "MinimizeUtilizationGap"
+            # Fonction objective : minimiser le nombre de stations doublées
+            prob += lpSum([double[j] for j in stations]), "MinimizeDoubledStations"
 
             # Contraintes
             # 1. Chaque tâche doit être assignée à exactement une station
@@ -254,16 +249,6 @@ def _optimize_with_station_reduction(tasks, predecessors, weighted_processing_ti
                         prob += lpSum([j*y[(i,j)] for j in stations]) >= lpSum([j*y[(p,j)] for j in stations]), f"Precedence_constraint_{counter}"
                         counter += 1
 
-            # 4. Contraintes pour les variables min/max d'utilisation
-            for j in stations:
-                station_load = lpSum([weighted_processing_times[i]*y[(i,j)] for i in tasks])
-                station_capacity = cycle_time * (1 + double[j])
-                
-                # Utilisation = (charge / capacité) * 100
-                # Pour éviter la division dans LP, on utilise : charge * 100 <= utilisation * capacité
-                prob += station_load * 100 <= max_util * station_capacity, f"MaxUtil_constraint_{j}"
-                prob += station_load * 100 >= min_util * station_capacity, f"MinUtil_constraint_{j}"
-
             # Résolution
             prob.solve(PULP_CBC_CMD(msg=0, timeLimit=60))
             
@@ -281,11 +266,36 @@ def _optimize_with_station_reduction(tasks, predecessors, weighted_processing_ti
                     if double[j].varValue and double[j].varValue > 0.5:
                         doubled_stations.append(j)
                 
-                max_utilization_value = max_util.varValue if max_util.varValue else 0
-                min_utilization_value = min_util.varValue if min_util.varValue else 0
-                utilization_gap = max_utilization_value - min_utilization_value
+                # Calcul manuel de l'écart d'utilisation
+                station_utilizations = []
+                for j in stations:
+                    tasks_in_station = [i for i in tasks if assignment.get(i) == j]
+                    if tasks_in_station:
+                        station_load = sum([weighted_processing_times[i] for i in tasks_in_station])
+                        station_capacity = cycle_time * (2 if j in doubled_stations else 1)
+                        utilization = (station_load / station_capacity) * 100
+                        station_utilizations.append(utilization)
                 
-                print(f"    Solution trouvée : écart = {utilization_gap:.2f}%, stations doublées = {doubled_stations}")
+                if station_utilizations:
+                    max_utilization_value = max(station_utilizations)
+                    min_utilization_value = min(station_utilizations)
+                    utilization_gap = max_utilization_value - min_utilization_value
+                else:
+                    utilization_gap = 0
+                
+                # Debug : afficher les détails de l'assignation
+                station_details = {}
+                for i in tasks:
+                    for j in stations:
+                        if y[(i,j)].varValue and y[(i,j)].varValue > 0:
+                            if j not in station_details:
+                                station_details[j] = []
+                            station_details[j].append(i)
+                
+                print(f"    Solution trouvée : {num_stations} stations, écart = {utilization_gap:.2f}%")
+                print(f"    Assignations : {station_details}")
+                print(f"    Stations doublées : {doubled_stations}")
+                print(f"    Utilisations : {[f'{u:.1f}%' for u in station_utilizations]}")
                 
                 # Vérifier si cette solution est meilleure
                 if utilization_gap < best_gap or (utilization_gap == best_gap and num_stations < best_num_stations):
