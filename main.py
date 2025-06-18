@@ -25,6 +25,7 @@ import ligne_assemblage_lpt
 import ligne_assemblage_pl
 import ligne_assemblage_mixte_goulot
 import ligne_assemblage_mixte_equilibrage
+import ligne_assemblage_mixte_equilibrage_plus_plus
 import ligne_transfert_buffer_buzzacott
 import flowshop_machines
 from validation import validate_jobs_data, validate_johnson_data, validate_johnson_modifie_data, ExtendedRequest, FlexibleFlowshopRequest, JohnsonRequest, JohnsonModifieRequest, SmithRequest, JobshopSPTRequest
@@ -1636,6 +1637,31 @@ def run_equilibrage_chart(request: dict):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/ligne_assemblage_mixte/equilibrage_plus_plus")
+def run_equilibrage_plus_plus_analysis(request: dict):
+    try:
+        result = ligne_assemblage_mixte_equilibrage_plus_plus.solve_mixed_assembly_line_plus_plus(request)
+        return result
+    except Exception as e:
+        print(f"Error in equilibrage++: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur algorithme équilibrage++: {str(e)}")
+
+@app.post("/ligne_assemblage_mixte/equilibrage_plus_plus/chart")
+def run_equilibrage_plus_plus_chart(request: dict):
+    try:
+        result = ligne_assemblage_mixte_equilibrage_plus_plus.solve_mixed_assembly_line_plus_plus(request)
+        
+        # Générer le graphique
+        image_base64 = ligne_assemblage_mixte_equilibrage_plus_plus.generate_equilibrage_plus_plus_chart(result)
+        
+        # Décoder l'image base64 et la retourner comme réponse image
+        image_data = base64.b64decode(image_base64)
+        buf = io.BytesIO(image_data)
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/ligne_transfert/buffer_buzzacott")
 def run_buffer_buzzacott_analysis(request: dict):
     try:
@@ -2645,6 +2671,31 @@ def export_ligne_assemblage_mixte_equilibrage_data_to_excel(request: LigneAssemb
 
 @app.post("/ligne_assemblage_mixte/equilibrage/import-excel")
 async def import_ligne_assemblage_mixte_equilibrage_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage_mixte_equilibrage"):
+    try:
+        data = await excel_import.parse_ligne_assemblage_mixte_equilibrage_excel(file)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/equilibrage_plus_plus/export-excel")
+def export_ligne_assemblage_mixte_equilibrage_plus_plus_data_to_excel(request: LigneAssemblageMixteEquilibrageExportDataRequest):
+    try:
+        buffer = excel_import.export_ligne_assemblage_mixte_equilibrage_to_excel(
+            request.products_data, 
+            request.tasks_data, 
+            request.cycle_time, 
+            request.unite
+        )
+        return StreamingResponse(
+            io.BytesIO(buffer), 
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=Export_Equilibrage_Plus_Plus_Mixte_Donnees_Manuelles.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/ligne_assemblage_mixte/equilibrage_plus_plus/import-excel")
+async def import_ligne_assemblage_mixte_equilibrage_plus_plus_excel(file: UploadFile = File(...), format_type: str = "ligne_assemblage_mixte_equilibrage_plus_plus"):
     try:
         data = await excel_import.parse_ligne_assemblage_mixte_equilibrage_excel(file)
         return data
