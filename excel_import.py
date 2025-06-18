@@ -1546,17 +1546,20 @@ def export_ligne_assemblage_to_excel(
             
             ws.cell(row=row, column=5, value=pred_str).border = border
         
-        # Informations supplémentaires
-        info_row = 7 + len(tasks_data) + 2
+        # Informations supplémentaires - Placer dans la colonne H aux positions demandées
+        # H6: "Unité de temps"
+        ws['H6'] = "Unité de temps"
+        ws['H6'].font = Font(bold=True)
         
-        ws.cell(row=info_row, column=2, value="Temps de cycle:")
-        ws.cell(row=info_row, column=3, value=cycle_time)
+        # H7: Valeur de l'unité (j/h/m)
+        ws['H7'] = unite
         
-        ws.cell(row=info_row + 1, column=2, value="Unité:")
-        ws.cell(row=info_row + 1, column=3, value=unite)
+        # H9: "Temps de cycle"
+        ws['H9'] = "Temps de cycle"
+        ws['H9'].font = Font(bold=True)
         
-        ws.cell(row=info_row + 2, column=2, value="Algorithme:")
-        ws.cell(row=info_row + 2, column=3, value=algorithm_name)
+        # H10: Valeur du temps de cycle
+        ws['H10'] = cycle_time
         
         # Ajuster la largeur des colonnes
         ws.column_dimensions['B'].width = 8
